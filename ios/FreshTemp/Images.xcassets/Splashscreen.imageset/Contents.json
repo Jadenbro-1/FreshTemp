@@ -1,0 +1,21 @@
+{
+  "images" : [
+    {
+      "filename" : "Brown Splash Screen and Sign in Bakery Shop Mobile Prototype-3.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
