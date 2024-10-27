@@ -1,3 +1,5 @@
+// ConfirmationModal.js
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,9 +9,17 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  FlatList,
 } from 'react-native';
 
-const ConfirmationModal = ({ showModal, receiptItems, onCancel, onConfirm, onEditItem, onDeleteItem }) => {
+const ConfirmationModal = ({
+  showModal,
+  receiptItems,
+  onCancel,
+  onConfirm,
+  onEditItem,
+  onDeleteItem,
+}) => {
   const [items, setItems] = useState(receiptItems);
 
   useEffect(() => {
@@ -22,15 +32,15 @@ const ConfirmationModal = ({ showModal, receiptItems, onCancel, onConfirm, onEdi
         return styles.vegetableHighlight;
       case 'Dairy':
         return styles.dairyHighlight;
-      case 'Meat':
+      case 'Proteins':
         return styles.proteinsHighlight;
       case 'Fruits':
         return styles.fruitHighlight;
-      case 'Grain':
+      case 'Grains':
         return styles.grainHighlight;
       case 'Spices':
         return styles.spicesHighlight;
-      case 'Condiment':
+      case 'Condiments':
         return styles.condimentsHighlight;
       case 'Baking':
         return styles.bakingHighlight;
@@ -56,58 +66,99 @@ const ConfirmationModal = ({ showModal, receiptItems, onCancel, onConfirm, onEdi
   };
 
   return (
-    <Modal visible={showModal} transparent={true} animationType="slide">
+    <Modal
+      visible={showModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onCancel}
+      accessibilityViewIsModal={true}
+      accessibilityLabel="Confirm Receipt Items Modal"
+    >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
+          {/* Modal Header */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Confirm Receipt Items</Text>
-            <TouchableOpacity onPress={onCancel}>
+            <TouchableOpacity onPress={onCancel} accessibilityLabel="Close Confirmation Modal">
               <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/x.png')}
+                source={require('../assets/x.png')}
                 style={styles.closeIcon}
               />
             </TouchableOpacity>
           </View>
-          <Text style={styles.modalSubtitle}>Please confirm the items detected from your receipt:</Text>
-          <ScrollView style={styles.receiptItemsContainer}>
-            {items.map((item, index) => (
-              <View key={index} style={styles.receiptItem}>
-                <View>
+          {/* Modal Subtitle */}
+          <Text style={styles.modalSubtitle}>
+            Please confirm the items detected from your receipt:
+          </Text>
+          {/* Receipt Items List */}
+          <FlatList
+            data={items}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={({ item, index }) => (
+              <View style={styles.receiptItem}>
+                <View style={styles.receiptItemInfo}>
                   <Text style={styles.receiptItemName}>{item.name}</Text>
-                  <Text style={styles.receiptItemDetail}>Quantity: {item.quantity}</Text>
-                  <Text style={styles.receiptItemDetail}>Expires: {item.expiration_date}</Text>
+                  <Text style={styles.receiptItemDetail}>
+                    Quantity: {item.quantity}
+                  </Text>
+                  <Text style={styles.receiptItemDetail}>
+                    Expires: {item.expiration_date || 'N/A'}
+                  </Text>
                 </View>
                 <View style={[styles.receiptItemTag, getItemTagStyle(item.type)]}>
                   <Text style={styles.receiptItemTagText}>{item.type}</Text>
                 </View>
                 <View style={styles.itemActions}>
-                  <TouchableOpacity onPress={() => handleEditItem(item, index)}>
+                  <TouchableOpacity
+                    onPress={() => handleEditItem(item, index)}
+                    accessibilityLabel={`Edit ${item.name}`}
+                    accessibilityHint="Edit this item"
+                  >
                     <Image
-                      source={require('/Users/jadenbro1/FreshTemp/assets/edit.png')}
+                      source={require('../assets/edit.png')}
                       style={styles.actionIcon}
                     />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteItem(index)}>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteItem(index)}
+                    accessibilityLabel={`Delete ${item.name}`}
+                    accessibilityHint="Delete this item from the list"
+                  >
                     <Image
-                      source={require('/Users/jadenbro1/FreshTemp/assets/trash.png')}
+                      source={require('../assets/trash.png')}
                       style={styles.actionIcon}
                     />
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
-          </ScrollView>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.noItemsText}>No items to confirm.</Text>
+            }
+            contentContainerStyle={styles.receiptItemsContainer}
+          />
+          {/* Modal Actions */}
           <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={onCancel}
+              accessibilityLabel="Cancel Adding Items"
+              accessibilityHint="Dismiss the confirmation modal without adding items"
+            >
               <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/x.png')}
+                source={require('../assets/x.png')}
                 style={styles.cancelIcon}
               />
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.darkGrayConfirmButton} onPress={() => onConfirm(items)}>
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={() => onConfirm(items)}
+              accessibilityLabel="Confirm Adding Items"
+              accessibilityHint="Add the confirmed items to your pantry"
+            >
               <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/check2.png')}
+                source={require('../assets/check2.png')}
                 style={styles.whiteConfirmIcon}
               />
               <Text style={styles.confirmButtonText}>Confirm</Text>
@@ -142,10 +193,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#1F2937',
   },
   closeIcon: {
     width: 20,
     height: 20,
+    tintColor: '#1F2937',
   },
   modalSubtitle: {
     fontSize: 14,
@@ -164,9 +217,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ddd',
     paddingBottom: 10,
   },
+  receiptItemInfo: {
+    flex: 1,
+  },
   receiptItemName: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#1F2937',
   },
   receiptItemDetail: {
     fontSize: 14,
@@ -178,45 +235,48 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     minWidth: 60,
     alignItems: 'center',
+    marginLeft: 10,
   },
   receiptItemTagText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
   },
+  // Category Tag Styles
   fruitHighlight: {
-    backgroundColor: "#EF4444",
+    backgroundColor: '#EF4444',
   },
   vegetableHighlight: {
-    backgroundColor: "#38a169",
+    backgroundColor: '#38a169',
   },
   proteinsHighlight: {
-    backgroundColor: "#F472B6",
+    backgroundColor: '#F472B6',
   },
   dairyHighlight: {
-    backgroundColor: "#3B82F6",
+    backgroundColor: '#3B82F6',
   },
   grainHighlight: {
-    backgroundColor: "#FBBF24",
+    backgroundColor: '#FBBF24',
   },
   spicesHighlight: {
-    backgroundColor: "#E53E3E",
+    backgroundColor: '#E53E3E',
   },
   condimentsHighlight: {
-    backgroundColor: "#ED8936",
+    backgroundColor: '#ED8936',
   },
   bakingHighlight: {
-    backgroundColor: "#ECC94B",
+    backgroundColor: '#ECC94B',
   },
   frozenHighlight: {
-    backgroundColor: "#4FD1C5",
+    backgroundColor: '#4FD1C5',
   },
   cannedHighlight: {
-    backgroundColor: "#718096",
+    backgroundColor: '#718096',
   },
   otherHighlight: {
-    backgroundColor: "#A855F7",
+    backgroundColor: '#A855F7',
   },
+  // Item Actions
   itemActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -228,6 +288,7 @@ const styles = StyleSheet.create({
     tintColor: '#A9A9A9',
     marginLeft: 8,
   },
+  // Modal Actions
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -251,6 +312,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  confirmButton: {
+    backgroundColor: '#2E2E2E',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   cancelButtonText: {
     color: '#000',
     fontSize: 16,
@@ -266,11 +335,19 @@ const styles = StyleSheet.create({
   cancelIcon: {
     width: 20,
     height: 20,
+    tintColor: '#000',
   },
   whiteConfirmIcon: {
     width: 16,
     height: 16,
     tintColor: '#FFF', // White icon color for confirm button
+  },
+  // No Items Styles
+  noItemsText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
 

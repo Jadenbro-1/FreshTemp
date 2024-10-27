@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+// HomeSocial.js
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,26 +11,55 @@ import {
   Image,
   Animated,
   ScrollView,
-  PanResponder,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Video from 'react-native-video';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 import Navbar from './Navbar'; // Importing the Navbar component
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Import AsyncStorage
+
+// Importing local assets
+import profilePicLocal from '../assets/profilepic.jpg'; // Ensure the correct path
+import starIcon from '../assets/star2.png'; // Favorite icon
+import star3Icon from '../assets/star3.png'; // Favorited icon
+import commentIcon from '../assets/comment.png'; // Comment icon
+import closeIcon from '../assets/close.png'; // Close icon
+import unlikedIcon from '../assets/unliked.png'; // Unliked icon
+import likedIcon from '../assets/liked.png'; // Liked icon
+import heartIcon from '../assets/liked.png'; // Heart icon for animation
+import recipeIcon from '../assets/book2.png'; // Recipe icon (book2.png)
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+const DOUBLE_TAP_DELAY = 300; // milliseconds
+
 const HomeSocial = () => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused(); // Use useIsFocused to detect screen focus
+
   const [videos, setVideos] = useState([]);
   const [showComments, setShowComments] = useState({});
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
-  const [commentScrollY] = useState(new Animated.Value(0));
-  const [starAnimation] = useState(new Animated.Value(0));
+  const [starAnimations, setStarAnimations] = useState({}); // Separate star animation for each video
+  const [heartAnimations, setHeartAnimations] = useState({}); // Separate heart animation for each video
+  const [progressAnimations, setProgressAnimations] = useState({}); // Separate progress animation for each video
   const flatListRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [pausedVideos, setPausedVideos] = useState({}); // State to track paused videos
+  const [activeTab, setActiveTab] = useState('Explore'); // State to track active top bar tab
 
+  // Define the AsyncStorage key based on userId
+  const userId = 1; // Replace with actual user ID from authentication
+  const STORAGE_KEY_CURRENT_VIDEO_INDEX = `@HomeSocial:currentVideoIndex:${userId}`;
+  // If needed, you can also define STORAGE_KEY_IN_PROGRESS_MEAL_PLAN
+
+  // Refs for manual double-tap detection
+  const lastTap = useRef(null);
+  const timer = useRef(null);
+
+  // Fetch videos from backend
   const fetchVideos = async () => {
     setLoading(true);
     try {
@@ -36,13 +67,13 @@ const HomeSocial = () => {
       const data = response.data;
       console.log('Fetched data:', data);
 
-      const mappedVideos = data.map((video, index) => ({
+      const mappedVideos = data.map((video) => ({
         id: video.media_id.toString(),
         videoUrl: {
           uri: video.url.startsWith('http') ? video.url.replace('http://', 'https://') : video.url,
         },
         username: `@${video.author_first_name}-${video.author_last_name}`,
-        profilePic: '/Users/jadenbro1/FreshTemp/assets/profilepic.jpg',
+        profilePic: profilePicLocal, // Using the local profile picture
         description: video.recipe_description,
         recipe_id: video.recipe_id,
         comments: [
@@ -56,13 +87,30 @@ const HomeSocial = () => {
           { user: 'User8', text: 'I love this!' },
         ],
         isFavorite: false,
-        isSubscribed: false,
-        isPaused: index !== 0,
+        isLiked: false, // Added isLiked state
+        isFollowed: false, // Added isFollowed state
+        heartAnimation: new Animated.Value(0), // Separate animation for each video
+        progressAnimation: new Animated.Value(0), // Separate progress animation for each video
       }));
+
+      // Initialize star and heart animations for each video
+      const initialStarAnimations = {};
+      const initialHeartAnimations = {};
+      const initialProgressAnimations = {};
+      mappedVideos.forEach((video, index) => {
+        initialStarAnimations[index] = new Animated.Value(0);
+        initialHeartAnimations[index] = new Animated.Value(0);
+        initialProgressAnimations[index] = new Animated.Value(0);
+      });
+
+      setStarAnimations(initialStarAnimations);
+      setHeartAnimations(initialHeartAnimations);
+      setProgressAnimations(initialProgressAnimations);
 
       setVideos(mappedVideos);
     } catch (error) {
       console.error('Error fetching media:', error.message);
+      Alert.alert('Error', 'Failed to load media.');
     } finally {
       setLoading(false);
     }
@@ -72,30 +120,91 @@ const HomeSocial = () => {
     fetchVideos();
   }, []);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      fetchVideos();
-      setVideos((prevVideos) => prevVideos.map((video) => ({ ...video, isPaused: true })));
+  // Load the saved current video index from AsyncStorage
+  const loadCurrentVideoIndex = async () => {
+    try {
+      const savedIndex = await AsyncStorage.getItem(STORAGE_KEY_CURRENT_VIDEO_INDEX);
+      if (savedIndex !== null) {
+        const index = parseInt(savedIndex, 10);
+        if (!isNaN(index) && index >= 0 && index < videos.length) {
+          setCurrentVideoIndex(index);
+          // Delay scrolling to ensure FlatList has rendered
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({ index, animated: false });
+          }, 500);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading current video index:', error);
+    }
+  };
 
-      return () => {
-        setVideos((prevVideos) => prevVideos.map((video) => ({ ...video, isPaused: true })));
+  // Save the current video index to AsyncStorage
+  const saveCurrentVideoIndex = async (index) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY_CURRENT_VIDEO_INDEX, index.toString());
+    } catch (error) {
+      console.error('Error saving current video index:', error);
+    }
+  };
+
+  // Use useFocusEffect to initialize the current video index when the screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      const initialize = async () => {
+        await loadCurrentVideoIndex();
+        // If needed, implement loadSavedMealPlanForEditing and checkSavedMealPlan
+        // loadSavedMealPlanForEditing();
+        // checkSavedMealPlan();
       };
-    }, [])
+
+      initialize();
+
+      // Clean up function to clear timer when the component unmounts or loses focus
+      return () => {
+        if (timer.current) {
+          clearTimeout(timer.current);
+        }
+      };
+    }, [videos.length])
   );
 
-  const loadMoreVideos = () => {};
+  // Save the current video index whenever it changes
+  useEffect(() => {
+    if (currentVideoIndex >= 0 && currentVideoIndex < videos.length) {
+      saveCurrentVideoIndex(currentVideoIndex);
+    }
+  }, [currentVideoIndex, videos.length]);
 
+  // Pause videos when screen is not focused
+  useEffect(() => {
+    if (!isFocused) {
+      // When the screen is not focused, pause all videos
+      setPausedVideos(() => {
+        const pausedState = {};
+        videos.forEach((_, index) => {
+          pausedState[index] = true;
+        });
+        return pausedState;
+      });
+    } else {
+      // When the screen is focused, resume only the current video
+      setPausedVideos(() => {
+        const pausedState = {};
+        videos.forEach((_, index) => {
+          pausedState[index] = index !== currentVideoIndex;
+        });
+        return pausedState;
+      });
+    }
+  }, [isFocused, currentVideoIndex, videos]);
+
+  // Handle video visibility changes
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems.length > 0) {
       const newVideoIndex = viewableItems[0].index;
       if (newVideoIndex !== currentVideoIndex) {
         setCurrentVideoIndex(newVideoIndex);
-        setVideos((prevVideos) =>
-          prevVideos.map((video, index) => ({
-            ...video,
-            isPaused: index !== newVideoIndex,
-          }))
-        );
       }
     }
   }).current;
@@ -104,226 +213,446 @@ const HomeSocial = () => {
     itemVisiblePercentThreshold: 50,
   };
 
+  // Toggle comments visibility
   const toggleComments = (index) => {
     setShowComments((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const animateStar = () => {
-    Animated.timing(starAnimation, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      Animated.timing(starAnimation, {
+  // Star animation
+  const animateStar = (index) => {
+    Animated.sequence([
+      Animated.timing(starAnimations[index], {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(starAnimations[index], {
         toValue: 0,
         duration: 1000,
         useNativeDriver: true,
-      }).start();
-    });
+      }),
+    ]).start();
   };
 
+  // Toggle favorite status with conditional animation
   const toggleFavorite = (index) => {
+    // Determine the new favorite status
+    const isNowFavorite = !videos[index].isFavorite;
+
+    // Update the favorite status in the state
     setVideos((prev) => {
       const newVideos = [...prev];
-      newVideos[index].isFavorite = !newVideos[index].isFavorite;
+      newVideos[index].isFavorite = isNowFavorite;
       return newVideos;
     });
-    animateStar();
+
+    // Trigger the star animation only if the video is now favorited
+    if (isNowFavorite) {
+      animateStar(index);
+    }
   };
 
-  const toggleSubscribe = (index) => {
+  // Toggle follow status
+  const toggleFollow = (index) => {
     setVideos((prev) => {
       const newVideos = [...prev];
-      newVideos[index].isSubscribed = !newVideos[index].isSubscribed;
+      newVideos[index].isFollowed = !newVideos[index].isFollowed;
       return newVideos;
     });
   };
 
+  // Toggle like status with heart animation
+  const toggleLike = (index) => {
+    setVideos((prev) => {
+      const newVideos = [...prev];
+      newVideos[index].isLiked = !newVideos[index].isLiked;
+      return newVideos;
+    });
+    animateHeart(index);
+  };
+
+  // Animate heart for a specific video
+  const animateHeart = (index) => {
+    Animated.sequence([
+      Animated.timing(heartAnimations[index], {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heartAnimations[index], {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Handle play/pause toggle
+  const handleSingleTap = (index) => {
+    togglePause(index);
+  };
+
+  // Handle like on double tap
+  const handleDoubleTap = (index) => {
+    toggleLike(index);
+  };
+
+  // Handle single and double taps with manual detection
+  const handleTap = (index) => {
+    const now = Date.now();
+    const DOUBLE_PRESS_DELAY = DOUBLE_TAP_DELAY;
+
+    if (lastTap.current && (now - lastTap.current) < DOUBLE_PRESS_DELAY) {
+      // Double Tap detected
+      clearTimeout(timer.current);
+      lastTap.current = null;
+      handleDoubleTap(index);
+    } else {
+      lastTap.current = now;
+      timer.current = setTimeout(() => {
+        handleSingleTap(index);
+        lastTap.current = null;
+      }, DOUBLE_PRESS_DELAY);
+    }
+  };
+
+  // Handle pause/play
   const togglePause = (index) => {
-    setVideos((prev) => {
-      const newVideos = [...prev];
-      newVideos[index].isPaused = !newVideos[index].isPaused;
-      return newVideos;
-    });
+    setPausedVideos((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
   };
 
-  const fetchRecipeDetails = async (recipeId) => {
-    try {
-      console.log(`Fetching recipe details for ID: ${recipeId}`);
-      const response = await axios.get(
-        `https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/recipe/${recipeId}`
-      );
-      console.log('Recipe details response:', response.data);
-      return response.data;
-    } catch (error) {
-      if (error.response) {
-        console.error('Error response data:', error.response.data);
-        console.error('Error response status:', error.response.status);
-        console.error('Error response headers:', error.response.headers);
-      } else if (error.request) {
-        console.error('No response received:', error.request);
-      } else {
-        console.error('Error setting up request:', error.message);
-      }
-      console.error('Error fetching recipe details:', error.config);
-      throw error;
-    }
-  };
-
-  const navigateToRecipeDetails = async (index) => {
-    const recipeId = videos[index].recipe_id;
-    if (!recipeId) {
-      console.error('No recipe_id found for video at index', index);
-      return;
-    }
+  // Navigate to recipe details with hardcoded recipeId = 79
+  const navigateToRecipeDetails = () => {
+    const hardcodedRecipeId = 162; // Hardcoded recipe ID
 
     try {
-      const recipeDetails = await fetchRecipeDetails(recipeId);
-      if (recipeDetails) {
-        navigation.navigate('RecipeDetails', { recipeId: recipeDetails.id });
-      } else {
-        console.error('Recipe details not found for recipe_id', recipeId);
-      }
+      navigation.navigate('RecipeDetails', { recipeId: hardcodedRecipeId });
     } catch (error) {
       console.error('Error navigating to recipe details:', error.message);
+      Alert.alert('Navigation Error', 'Failed to navigate to recipe details.');
     }
   };
 
-  const renderVideoItem = ({ item, index }) => {
-    const panResponder = PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) =>
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
-      onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dx > 100) {
-          toggleFavorite(index);
-        } else if (gestureState.dx < -100) {
-          navigateToRecipeDetails(index);
-        }
-      },
-      onPanResponderRelease: () => {
-        if (videos[index].isFavorite) {
-          animateStar();
-        }
-      },
-    });
+  // Handle top bar button press
+  const handleTopBarPress = (tab) => {
+    setActiveTab(tab);
+    navigation.navigate('Home'); // Navigate to HomeSocial screen
+  };
 
-    return (
-      <View style={styles.videoContainer} {...panResponder.panHandlers}>
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+      }
+    };
+  }, []);
+
+  // Render each video item
+  const renderVideoItem = useCallback(
+    ({ item, index }) => {
+      // Handle video progress
+      const handleProgress = (progress) => {
+        const progressValue = progress.currentTime / (progress.seekableDuration || 1);
+        progressAnimations[index].setValue(progressValue);
+      };
+
+      return (
         <TouchableOpacity
           activeOpacity={1}
-          onPress={() => togglePause(index)}
-          style={{ flex: 1 }}
+          style={styles.videoContainer}
+          onPress={() => handleTap(index)}
         >
-          {item.videoUrl ? (
-            <Video
-              key={`${item.id}-${currentVideoIndex === index}`}
-              source={{ uri: item.videoUrl.uri }}
-              style={styles.video}
-              resizeMode="cover"
-              repeat
-              paused={item.isPaused}
-              onError={(error) => console.log(`Error loading video ${item.id}:`, error)}
-              onLoadStart={() =>
-                console.log(`Loading video ${item.id}: ${item.videoUrl.uri}`)
-              }
-            />
-          ) : (
-            <Text style={{ color: 'white' }}>Invalid video URL</Text>
-          )}
-        </TouchableOpacity>
-        <View style={styles.overlay}>
-          {!showComments[index] && (
-            <View style={styles.symbolContainer}>
-              <TouchableOpacity onPress={() => toggleFavorite(index)}>
-                <Text style={styles.symbol}>{item.isFavorite ? '★' : '☆'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => toggleSubscribe(index)}>
-                <Text style={styles.symbol}>{item.isSubscribed ? '⊖' : '⊕'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigateToRecipeDetails(index)}>
-                <Text style={styles.symbol}>{'⊜'}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          <Animated.View style={[styles.videoDetailsContainer]}>
-            <View style={styles.videoDetails}>
-              <Image source={{ uri: item.profilePic }} style={styles.profilePic} />
-              <View style={styles.videoInfo}>
-                <Text style={styles.username}>{item.username}</Text>
-                <TouchableOpacity onPress={() => toggleComments(index)}>
-                  <Text style={styles.description}>{item.description}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {showComments[index] && (
-              <View style={styles.commentsSection}>
-                <ScrollView style={styles.commentsScrollView}>
-                  {item.comments.map((comment, commentIndex) => (
-                    <View key={commentIndex} style={styles.comment}>
-                      <Text style={styles.commentUser}>{comment.user}</Text>
-                      <Text style={styles.commentText}>{comment.text}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-                <TouchableOpacity
-                  style={styles.closeCommentsButton}
-                  onPress={() => toggleComments(index)}
-                >
-                  <Text style={styles.closeCommentsText}>Close Comments</Text>
-                </TouchableOpacity>
+          {/* Top Bar with "Your Picks" and "Explore" */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.topBarButton}
+              onPress={() => handleTopBarPress('Your Picks')}
+              accessibilityLabel="Your Picks Tab"
+              accessibilityHint="Navigate to Your Picks"
+            >
+              <Text style={styles.topBarButtonText}>Your Picks</Text>
+              {activeTab === 'Your Picks' && <View style={styles.underline} />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.topBarButton}
+              onPress={() => handleTopBarPress('Explore')}
+              accessibilityLabel="Explore Tab"
+              accessibilityHint="Navigate to Explore"
+            >
+              <Text style={styles.topBarButtonText}>Explore</Text>
+              {activeTab === 'Explore' && <View style={styles.underline} />}
+            </TouchableOpacity>
+          </View>
+
+          {/* Video Player */}
+          <View style={{ flex: 1 }}>
+            {item.videoUrl && item.videoUrl.uri ? (
+              <Video
+                source={item.videoUrl} // Correctly passing the object with uri
+                style={styles.video}
+                resizeMode="cover"
+                repeat
+                paused={pausedVideos[index] || index !== currentVideoIndex}
+                ignoreSilentSwitch="ignore" // Ensures audio plays even if the phone is in silent mode
+                onError={(error) => {
+                  console.log(`Error loading video ${item.id}:`, error);
+                  Alert.alert('Video Error', 'Failed to load the video. Please try again later.');
+                }}
+                onLoadStart={() => console.log(`Loading video ${item.id}: ${item.videoUrl.uri}`)}
+                onBuffer={(buffer) => {
+                  if (buffer.isBuffering) {
+                    console.log(`Buffering video ${item.id}`);
+                  }
+                }}
+                onProgress={handleProgress}
+              />
+            ) : (
+              <View style={styles.invalidVideoContainer}>
+                <Text style={styles.invalidVideoText}>Invalid video URL</Text>
               </View>
             )}
-          </Animated.View>
-        </View>
-        <Animated.View style={[styles.starAnimation, { opacity: starAnimation }]}>
-          <Text style={styles.starText}>★</Text>
-        </Animated.View>
+          </View>
+
+          {/* Video Progress Bar */}
+          <View style={styles.progressBarContainer}>
+            <Animated.View
+              style={[
+                styles.progressBar,
+                {
+                  width: progressAnimations[index].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                    extrapolate: 'clamp',
+                  }),
+                },
+              ]}
+            />
+          </View>
+
+          {/* Overlay with Icons */}
+          <View style={styles.overlay}>
+            {/* Right Side: Like, Favorite, Comments, Recipe Icons */}
+            <View style={styles.symbolContainer}>
+              {/* Like Icon */}
+              <TouchableOpacity
+                onPress={() => toggleLike(index)}
+                accessibilityLabel={item.isLiked ? 'Unlike Video' : 'Like Video'}
+                accessibilityHint="Adds or removes a like from this video"
+              >
+                <Image
+                  source={item.isLiked ? likedIcon : unlikedIcon}
+                  style={[
+                    styles.symbolIcon,
+                    { tintColor: item.isLiked ? '#FF0000' : '#fff' }, // Red when liked
+                  ]}
+                  accessibilityLabel="Like Icon"
+                />
+              </TouchableOpacity>
+
+              {/* Favorite Icon */}
+              <TouchableOpacity
+                onPress={() => toggleFavorite(index)}
+                accessibilityLabel={item.isFavorite ? 'Unfavorite Video' : 'Favorite Video'}
+                accessibilityHint="Adds or removes this video from your favorites"
+              >
+                <Image
+                  source={item.isFavorite ? star3Icon : starIcon}
+                  style={[
+                    styles.symbolIcon,
+                    { tintColor: item.isFavorite ? '#FFD700' : '#fff' }, // Gold when favorited
+                  ]}
+                  accessibilityLabel="Favorite Icon"
+                />
+              </TouchableOpacity>
+
+              {/* Comments Icon */}
+              <TouchableOpacity
+                onPress={() => toggleComments(index)}
+                accessibilityLabel="View Comments"
+                accessibilityHint="Shows the comments section"
+              >
+                <Image
+                  source={commentIcon}
+                  style={styles.symbolIcon}
+                  accessibilityLabel="Comments Icon"
+                />
+              </TouchableOpacity>
+
+              {/* Recipe Icon */}
+              <TouchableOpacity
+                onPress={navigateToRecipeDetails}
+                accessibilityLabel="View Recipe Details"
+                accessibilityHint="Navigates to the recipe details screen"
+              >
+                <Image
+                  source={recipeIcon}
+                  style={styles.symbolIcon}
+                  accessibilityLabel="Recipe Icon"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Video Details */}
+            <View style={styles.videoDetailsContainer}>
+              <View style={styles.videoDetails}>
+                <Image source={item.profilePic} style={styles.profilePic} />
+                <View style={styles.videoInfo}>
+                  <View style={styles.videoInfoHeader}>
+                    <Text style={styles.username}>{item.username}</Text>
+                    {/* Follow Button */}
+                    <TouchableOpacity
+                      onPress={() => toggleFollow(index)}
+                      style={[
+                        styles.followButton,
+                        { borderColor: '#ddd' },
+                      ]}
+                      accessibilityLabel={item.isFollowed ? 'Unfollow' : 'Follow'}
+                      accessibilityHint={item.isFollowed ? 'Unfollows the creator' : 'Follows the creator'}
+                    >
+                      <Text
+                        style={[
+                          styles.followButtonText,
+                          { color: '#ddd' },
+                        ]}
+                      >
+                        {item.isFollowed ? 'Following' : 'Follow'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={() => toggleComments(index)}>
+                    <Text style={styles.description}>{item.description}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Comments Section */}
+          {showComments[index] && (
+            <Animated.View
+              style={[
+                styles.commentsSection,
+                {
+                  transform: [{ translateY: 0 }],
+                },
+              ]}
+            >
+              <View style={styles.commentsHeader}>
+                <Text style={styles.commentsTitle}>Comments</Text>
+                <TouchableOpacity onPress={() => toggleComments(index)}>
+                  <Image source={closeIcon} style={styles.closeIcon} accessibilityLabel="Close Comments" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.commentsList}>
+                {item.comments.map((comment, commentIndex) => (
+                  <View key={commentIndex} style={styles.comment}>
+                    <Text style={styles.commentUser}>@{comment.user}</Text>
+                    <Text style={styles.commentText}>{comment.text}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
+
+          {/* Heart Animation */}
+          {item.isLiked && (
+            <Animated.View
+              style={[
+                styles.heartAnimation,
+                {
+                  opacity: heartAnimations[index],
+                  transform: [
+                    {
+                      scale: heartAnimations[index].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.5, 1.5],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+              accessibilityLabel="Heart Animation"
+            >
+              <Image source={heartIcon} style={styles.heartIcon} />
+            </Animated.View>
+          )}
+
+          {/* Star Animation */}
+          {item.isFavorite && (
+            <Animated.View style={[styles.starAnimation, { opacity: starAnimations[index] || 0 }]}>
+              <Text style={styles.starText}>★</Text>
+            </Animated.View>
+          )}
+        </TouchableOpacity>
+      );
+    },
+    [
+      currentVideoIndex,
+      showComments,
+      starAnimations,
+      heartAnimations,
+      progressAnimations,
+      pausedVideos,
+      activeTab,
+      toggleFavorite,
+      toggleLike,
+      toggleFollow,
+      toggleComments,
+      navigateToRecipeDetails,
+    ]
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#fff" />
       </View>
     );
-  };
+  }
 
   return (
     <View style={styles.background}>
-      <View style={styles.topBar}>
-        <TouchableOpacity
-          style={styles.topBarButton}
-          onPress={() => navigation.navigate('YourPicks')}
-        >
-          <Text style={styles.topBarButtonText}>Your Picks</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.topBarButton}
-          onPress={() => navigation.navigate('Explore')}
-        >
-          <Text style={styles.topBarButtonText}>Explore</Text>
-        </TouchableOpacity>
-      </View>
-      {loading ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={videos}
-          renderItem={renderVideoItem}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          snapToAlignment="start"
-          decelerationRate="fast"
-          snapToInterval={screenHeight}
-          pagingEnabled
-          onEndReached={loadMoreVideos}
-          onEndReachedThreshold={0.5}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-        />
-      )}
-      {/* Added Navbar component */}
+      <FlatList
+        ref={flatListRef}
+        data={videos}
+        renderItem={renderVideoItem}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        snapToInterval={screenHeight}
+        pagingEnabled
+        onEndReached={fetchVideos} // Load more videos when reaching the end
+        onEndReachedThreshold={0.5}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        windowSize={3} // Preload one video before and after the current
+        initialNumToRender={1}
+        maxToRenderPerBatch={3}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({
+          length: screenHeight,
+          offset: screenHeight * index,
+          index,
+        })}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise((resolve) => setTimeout(resolve, 500));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+          });
+        }}
+      />
+      {/* Navbar component */}
       <Navbar currentScreen="Home" theme="dark" />
-  </View>
+    </View>
   );
 };
+
+export default HomeSocial;
 
 const styles = StyleSheet.create({
   background: {
@@ -331,114 +660,163 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
     position: 'absolute',
     top: 0,
     width: '100%',
-    zIndex: 1,
-    paddingVertical: 50,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 50, // Adjust for status bar height if necessary
+    paddingBottom: 10,
+    zIndex: 2,
   },
   topBarButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    alignItems: 'center',
   },
   topBarButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    textDecorationLine: 'underline',
+    fontFamily: 'Cochin',
+  },
+  underline: {
+    marginTop: 4,
+    height: 2,
+    width: '100%',
+    backgroundColor: '#fff',
   },
   videoContainer: {
     width: screenWidth,
     height: screenHeight,
+    justifyContent: 'flex-end',
   },
   video: {
     width: '100%',
     height: '100%',
   },
+  invalidVideoContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  invalidVideoText: {
+    color: 'white',
+    fontSize: 16,
+  },
   overlay: {
     position: 'absolute',
     top: 0,
-    bottom: 0,
+    bottom: 70, // Space for Navbar (assuming Navbar height is 60)
     left: 0,
     right: 0,
     justifyContent: 'flex-end',
   },
   symbolContainer: {
     position: 'absolute',
-    right: 10,
-    top: '66%',
+    right: 20,
+    bottom: 150, // Positioning just above the description container
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  symbol: {
-    color: '#fff',
-    fontSize: 30,
-    marginVertical: 5,
+  symbolIcon: {
+    width: 28,
+    height: 28,
+    tintColor: '#fff',
+    marginVertical: 15,
   },
   videoDetailsContainer: {
-    paddingBottom: 70,
+    paddingBottom: 20,
     paddingTop: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    position: 'absolute',
-    bottom: 0,
     width: '100%',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   videoDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    paddingHorizontal: 20,
   },
   profilePic: {
-    width: 30,
-    height: 30,
+    width: 50,
+    height: 50,
     borderRadius: 25,
     marginRight: 10,
+    backgroundColor: '#000',
   },
   videoInfo: {
     flex: 1,
+  },
+  videoInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   username: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
   },
+  followButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  followButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
   description: {
     fontSize: 14,
     color: '#ddd',
+    marginTop: 4,
   },
   commentsSection: {
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    padding: 10,
-    maxHeight: screenHeight * 0.4, // Limit the height of the comments section
+    position: 'absolute',
+    bottom: 70, // Space for Navbar (assuming Navbar height is 60)
+    width: '100%',
+    height: screenHeight * 0.4, // 40% of the screen height
+    backgroundColor: 'rgba(28, 28, 28, 0.95)',
+    zIndex: 5,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 15,
   },
-  commentsScrollView: {
-    maxHeight: screenHeight * 0.3, // Limit the height of the ScrollView
-  },
-  comment: {
-    padding: 10,
-    borderBottomWidth: 0,
+  commentsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
-  commentUser: {
-    color: '#fff',
+  commentsTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#fff',
+  },
+  closeIcon: {
+    width: 24,
+    height: 24,
+    tintColor: '#fff',
+  },
+  commentsList: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  comment: {
+    marginBottom: 20,
+  },
+  commentUser: {
+    color: '#5FC6FF',
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
   commentText: {
     color: '#fff',
-  },
-  closeCommentsButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    marginTop: 10,
-    backgroundColor: '#444',
-    borderRadius: 5,
-  },
-  closeCommentsText: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
+    lineHeight: 20,
   },
   starAnimation: {
     position: 'absolute',
@@ -455,6 +833,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  heartAnimation: {
+    position: 'absolute',
+    top: '40%',
+    left: '40%',
+    width: 100,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heartIcon: {
+    width: 100,
+    height: 100,
+    tintColor: '#FF0000', // Red color for heart
+    resizeMode: 'contain',
+  },
+  progressBarContainer: {
+    position: 'absolute',
+    bottom: 70, // Above the navbar
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+  },
 });
-
-export default HomeSocial;

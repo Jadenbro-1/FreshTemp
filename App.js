@@ -29,6 +29,8 @@ import Upload from './src/Upload';
 import MealPreview from './src/MealPreview';
 import ReceiptCameraScreen from './src/ReceiptCameraScreen';
 import PostDetails from './src/PostDetails';
+import Messenger from './src/Messenger'; // Adjust the path if necessary
+import ChatScreen from './src/ChatScreen';
 
 // Import the Settings and EditProfile screens
 import Settings from './src/Settings';
@@ -80,6 +82,8 @@ const App = () => {
               <Stack.Screen name="MealPreview" component={MealPreview} />
               <Stack.Screen name="ReceiptCameraScreen" component={ReceiptCameraScreen} />
               <Stack.Screen name="PostDetails" component={PostDetails} />
+              <Stack.Screen name="Messenger" component={Messenger} />
+              <Stack.Screen name="ChatScreen" component={ChatScreen} />
               {/* Add the Settings and EditProfile screens */} 
               <Stack.Screen name="Settings" component={Settings} />
               <Stack.Screen name="EditProfile" component={EditProfile} />

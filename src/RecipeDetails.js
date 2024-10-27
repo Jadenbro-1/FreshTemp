@@ -16,13 +16,58 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import { ProgressView } from '@react-native-community/progress-view';
 import AddMissingModal from './modals/AddMissingModal';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+// Function to parse instructions string into an array of steps
 const parseInstructions = (instructionsStr) => {
   return instructionsStr.split('\n').map((instruction, index) => ({
     step: index + 1,
     description: instruction.trim(), // Clean up whitespace
   }));
+};
+
+// Function to calculate Jaccard similarity between two strings
+const getJaccardSimilarity = (str1, str2) => {
+  const set1 = new Set(str1.split(' '));
+  const set2 = new Set(str2.split(' '));
+
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+
+  return intersection.size / union.size;
+};
+
+// Function to normalize ingredient names (remove numbers, special characters, and spaces)
+const normalizeIngredientName = (name) => {
+  return name
+    .toLowerCase()
+    .replace(/[\d\/\-\.]+/g, '')  // Remove digits, fractions, dashes, and periods
+    .trim();  // Trim any extra spaces
+};
+
+// Function to parse ingredients with a similarity threshold
+const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThreshold = 0.6) => {
+  return ingredientsStr.split('\n').map((ingredientLine, index) => {
+    const normalizedIngredient = normalizeIngredientName(ingredientLine);
+
+    // Check for a match in the backend data
+    const statusItem = ingredientStatusData.find((status) => {
+      const normalizedStatus = normalizeIngredientName(status.name);
+      const jaccardSimilarity = getJaccardSimilarity(normalizedIngredient, normalizedStatus);
+      const match = normalizedIngredient.includes(normalizedStatus) || normalizedStatus.includes(normalizedIngredient) || jaccardSimilarity >= similarityThreshold;
+      return match;
+    });
+
+    // Set inStock based on backend result
+    const inStock = statusItem ? statusItem.inStock : false;
+
+    return {
+      id: index,
+      name: ingredientLine, // Keep the original name for display
+      inStock,
+      isPending: false, // Initialize isPending as false
+    };
+  });
 };
 
 const RecipeDetails = () => {
@@ -42,120 +87,9 @@ const RecipeDetails = () => {
   const [ingredients, setIngredients] = useState([]);
   const [instructions, setInstructions] = useState([]);
   const [adjustedNutritionFacts, setAdjustedNutritionFacts] = useState([]);
+  const [loading, setLoading] = useState(true); // Initialize loading state
 
-  const fetchRecipeDetails = async () => {
-    try {
-      const recipeResponse = await axios.get(
-        `https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/recipe/${recipeId}?userId=${userId}`
-      );
-      const { recipe, ingredientStatus: fetchedIngredientStatus, nutrition, instructions } = recipeResponse.data;
-  
-      // Set the recipe, ingredients, and favorite status
-      setRecipe(recipe);
-      setIngredientStatus(fetchedIngredientStatus);
-  
-      // Set nutrition data directly from the API response
-      setNutrition(nutrition);
-  
-      // Parse instructions to ensure it's an array
-      const parsedInstructions = parseInstructions(instructions);
-      setInstructions(parsedInstructions); // Set the parsed instructions
-  
-      // Handle servings and ingredients
-      const initialServings = recipe.servings || 1;
-      setServings(initialServings);
-  
-      const parsedIngredients = parseIngredients(recipe.ingredients, fetchedIngredientStatus);
-      setIngredients(parsedIngredients);
-  
-      adjustNutritionFacts(nutrition, initialServings, initialServings);
-    } catch (error) {
-      console.error('Error fetching recipe details:', error);
-    }
-  };
-
-  // Function to calculate Jaccard similarity between two strings
-const getJaccardSimilarity = (str1, str2) => {
-  const set1 = new Set(str1.split(' '));
-  const set2 = new Set(str2.split(' '));
-  
-  const intersection = new Set([...set1].filter(x => set2.has(x)));
-  const union = new Set([...set1, ...set2]);
-
-  return intersection.size / union.size;
-};
-
-// Normalize ingredient names (remove numbers, special characters, and spaces)
-const normalizeIngredientName = (name) => {
-  return name
-    .toLowerCase()
-    .replace(/[\d\/\-\.]+/g, '')  // Remove digits, fractions, dashes, and periods
-    .trim();  // Trim any extra spaces
-};
-
-// Parse ingredients with a similarity threshold
-const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThreshold = 0.6) => {
-
-  return ingredientsStr.split('\n').map((ingredientLine, index) => {
-    const normalizedIngredient = normalizeIngredientName(ingredientLine);
-    
-
-    
-    // Check for a match in the backend data
-    const statusItem = ingredientStatusData.find((status) => {
-      const normalizedStatus = normalizeIngredientName(status.name);
-      
-      const jaccardSimilarity = getJaccardSimilarity(normalizedIngredient, normalizedStatus);
-      const match = normalizedIngredient.includes(normalizedStatus) || normalizedStatus.includes(normalizedIngredient) || jaccardSimilarity >= similarityThreshold;
-      
-
-      return match;
-    });
-
-    // Set inStock based on backend result
-    const inStock = statusItem ? statusItem.inStock : false;
-
-
-    return {
-      id: index,
-      name: ingredientLine, // Keep the original name for display
-      inStock,
-    };
-  });
-};
-  const adjustServings = (increment) => {
-    const newServings = Math.max(1, servings + (increment ? 1 : -1));
-    adjustNutritionFacts(nutrition, servings, newServings);
-    setServings(newServings);
-  };
-
-  const adjustNutritionFacts = (nutritionData, oldServings, newServings) => {
-    const factor = newServings / oldServings;
-    const selectedNutritionKeys = [
-      'calories',
-      'carbohydrateContent',
-      'proteinContent',
-      'fatContent',
-      'saturatedFatContent',
-      'cholesterolContent',
-      'sodiumContent',
-      'fiberContent',
-      'sugarContent',
-    ];
-
-    const adjustedFacts = Object.entries(nutritionData)
-      .filter(([key]) => selectedNutritionKeys.includes(key))
-      .map(([key, value]) => {
-        const numericValue = parseFloat(value);
-        return {
-          name: formatNutritionName(key),
-          amount: numericValue * factor,
-          unit: '',
-        };
-      });
-    setAdjustedNutritionFacts(adjustedFacts);
-  };
-
+  // Function to format nutrition names
   const formatNutritionName = (key) => {
     switch (key) {
       case 'calories':
@@ -181,6 +115,42 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
     }
   };
 
+  // Function to adjust servings and nutrition facts
+  const adjustServings = (increment) => {
+    const newServings = Math.max(1, servings + (increment ? 1 : -1));
+    adjustNutritionFacts(nutrition, servings, newServings);
+    setServings(newServings);
+  };
+
+  // Function to adjust nutrition facts based on servings
+  const adjustNutritionFacts = (nutritionData, oldServings, newServings) => {
+    const factor = newServings / oldServings;
+    const selectedNutritionKeys = [
+      'calories',
+      'carbohydrateContent',
+      'proteinContent',
+      'fatContent',
+      'saturatedFatContent',
+      'cholesterolContent',
+      'sodiumContent',
+      'fiberContent',
+      'sugarContent',
+    ];
+
+    const adjustedFacts = Object.entries(nutritionData)
+      .filter(([key]) => selectedNutritionKeys.includes(key))
+      .map(([key, value]) => {
+        const numericValue = parseFloat(value);
+        return {
+          name: formatNutritionName(key),
+          amount: numericValue * factor,
+          unit: '', // Assuming units are handled elsewhere or not needed
+        };
+      });
+    setAdjustedNutritionFacts(adjustedFacts);
+  };
+
+  // Function to toggle favorite status
   const toggleFavorite = async () => {
     try {
       if (isFavorite) {
@@ -195,9 +165,66 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
       }
       setIsFavorite(!isFavorite);
     } catch (error) {
-      console.error('Error toggling favorite:', error.message);
+      console.error('Error toggling favorite:', error.response ? error.response.data : error.message);
+      Alert.alert('Error', 'Failed to update favorite status.');
     }
   };
+
+  // Function to fetch favorite recipes
+  const fetchFavorites = async () => {
+    try {
+      const response = await axios.get(`https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/favorites/${userId}`);
+      const favoriteRecipes = response.data;
+      const isFav = favoriteRecipes.some((fav) => fav.id === recipeId);
+      setIsFavorite(isFav);
+    } catch (error) {
+      console.error('Error fetching favorites:', error.message);
+      Alert.alert('Error', 'Failed to load favorite status.');
+    }
+  };
+
+  // Function to fetch recipe details
+  const fetchRecipeDetails = async () => {
+    try {
+      const recipeResponse = await axios.get(
+        `https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/recipe/${recipeId}?userId=${userId}`
+      );
+      const { recipe, ingredientStatus: fetchedIngredientStatus, nutrition, instructions } = recipeResponse.data;
+
+      // Set the recipe, ingredients, and favorite status
+      setRecipe(recipe);
+      setIngredientStatus(fetchedIngredientStatus);
+
+      // Set nutrition data directly from the API response
+      setNutrition(nutrition);
+
+      // Parse instructions to ensure it's an array
+      const parsedInstructions = parseInstructions(instructions);
+      setInstructions(parsedInstructions); // Set the parsed instructions
+
+      // Handle servings and ingredients
+      const initialServings = recipe.servings || 1;
+      setServings(initialServings);
+
+      const parsedIngredients = parseIngredients(recipe.ingredients, fetchedIngredientStatus);
+      setIngredients(parsedIngredients);
+
+      adjustNutritionFacts(nutrition, initialServings, initialServings);
+
+      // Fetch and set favorite status
+      await fetchFavorites();
+    } catch (error) {
+      console.error('Error fetching recipe details:', error.response ? error.response.data : error.message);
+      Alert.alert('Error', 'Failed to load recipe details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch recipe details on component mount
+  useEffect(() => {
+    fetchRecipeDetails();
+  }, [recipeId]);
 
   // Refresh the page when it comes into focus
   useFocusEffect(
@@ -206,6 +233,7 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
     }, [recipeId])
   );
 
+  // Cooking Functions
   const startCooking = () => {
     setIsCooking(true);
     setCurrentStep(0);
@@ -226,8 +254,10 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
   const finishCooking = () => {
     setIsCooking(false);
     setCurrentStep(0);
+    Alert.alert('Congratulations!', 'You have completed cooking the recipe.');
   };
 
+  // Add Missing Ingredients Functions
   const openConfirmDialog = () => {
     setIsConfirmDialogOpen(true);
   };
@@ -260,7 +290,7 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
       closeConfirmDialog();
       Alert.alert('Success', 'Ingredients added to shopping list.');
     } catch (error) {
-      console.error('Error adding ingredients to cart:', error.message);
+      console.error('Error adding ingredients to cart:', error.response ? error.response.data : error.message);
       Alert.alert('Error', 'Failed to add ingredients to cart.');
     }
   };
@@ -269,23 +299,24 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
     (ingredient) => !ingredient.inStock && !ingredient.isPending
   );
 
+  // Function to render stock status icons
   const renderStockStatus = (ingredient) => {
     const { inStock, isPending } = ingredient;
-  
+
     let iconSource;
     let tintColor;
-  
+
     if (inStock) {
-      iconSource = require('/Users/jadenbro1/FreshTemp/assets/check2.png');
+      iconSource = require('../assets/check2.png');
       tintColor = 'green';
     } else if (isPending) {
-      iconSource = require('/Users/jadenbro1/FreshTemp/assets/pending.png');
+      iconSource = require('../assets/pending.png');
       tintColor = 'orange';
     } else {
-      iconSource = require('/Users/jadenbro1/FreshTemp/assets/x.png');
+      iconSource = require('../assets/x.png');
       tintColor = 'red';
     }
-  
+
     return (
       <View style={styles.stockContainer}>
         <Image source={iconSource} style={[styles.stockIcon, { tintColor }]} />
@@ -293,10 +324,19 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
     );
   };
 
-  if (!recipe) {
+  // Function to navigate back
+  const goBack = () => {
+    navigation.goBack();
+  };
+
+  // Conditional Rendering based on loading state
+  if (loading || !recipe) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Image
+          source={require('../assets/loading3.gif')}
+          style={styles.loadingImage}
+        />
       </View>
     );
   }
@@ -304,30 +344,42 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Image and Favorite Button */}
+        {/* Image and Buttons */}
         <View style={styles.imageContainer}>
-          {recipe && recipe.image ? (
+          {recipe.image ? (
             <Image style={styles.image} source={{ uri: recipe.image }} />
           ) : (
-            <Text>No Image Available</Text>
+            <Text style={styles.noImageText}>No Image Available</Text>
           )}
-          <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
+          
+          {/* Back Button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={goBack}
+            accessibilityLabel="Go Back"
+            accessibilityHint="Navigates to the previous screen"
+          >
+            <View style={styles.backButtonBox}>
+              <Image
+                source={require('../assets/left.png')}
+                style={styles.backIcon}
+              />
+              <Text style={styles.backButtonText}>Back</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Favorite Button */}
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={toggleFavorite}
+            accessibilityLabel="Toggle Favorite"
+            accessibilityHint="Adds or removes this recipe from your favorites"
+          >
             <Text style={[styles.favoriteButtonText, isFavorite && styles.favoriteButtonActive]}>
               {isFavorite ? '♥' : '♡'}
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Back Button */}
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <View style={styles.backButtonBox}>
-            <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/chevron-left.png')}
-              style={styles.backIcon}
-            />
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </View>
-        </TouchableOpacity>
 
         {/* Title and Description */}
         <Text style={styles.headerTitle}>{recipe.title}</Text>
@@ -340,7 +392,7 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
         <View style={styles.infoContainer}>
           <View style={styles.infoItem}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/clock.png')}
+              source={require('../assets/clock.png')}
               style={styles.infoIcon}
             />
             <Text style={styles.infoLabel}>Prep Time</Text>
@@ -348,7 +400,7 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
           </View>
           <View style={styles.infoItem}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/clock.png')}
+              source={require('../assets/clock.png')}
               style={styles.infoIcon}
             />
             <Text style={styles.infoLabel}>Cook Time</Text>
@@ -356,23 +408,33 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
           </View>
           <View style={styles.infoItem}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/servings.png')}
+              source={require('../assets/servings.png')}
               style={styles.infoIcon}
             />
             <Text style={styles.infoLabel}>Servings</Text>
             <View style={styles.servingsContainer}>
-              <TouchableOpacity style={styles.servingsButton} onPress={() => adjustServings(false)}>
+              <TouchableOpacity
+                style={styles.servingsButton}
+                onPress={() => adjustServings(false)}
+                accessibilityLabel="Decrease Servings"
+                accessibilityHint="Decreases the number of servings"
+              >
                 <Text style={styles.servingsButtonText}>-</Text>
               </TouchableOpacity>
               <Text style={styles.servingsValue}>{servings}</Text>
-              <TouchableOpacity style={styles.servingsButton} onPress={() => adjustServings(true)}>
+              <TouchableOpacity
+                style={styles.servingsButton}
+                onPress={() => adjustServings(true)}
+                accessibilityLabel="Increase Servings"
+                accessibilityHint="Increases the number of servings"
+              >
                 <Text style={styles.servingsButtonText}>+</Text>
               </TouchableOpacity>
             </View>
           </View>
           <View style={styles.infoItem}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/star.png')}
+              source={require('../assets/star.png')}
               style={[styles.infoIcon, { tintColor: '#FFD700' }]}
             />
             <Text style={styles.infoLabel}>Rating</Text>
@@ -387,11 +449,11 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
             <View style={styles.section}>
               <Text style={styles.subTitle}>Ingredients</Text>
               {ingredients.map((ingredient, index) => (
-  <View key={index} style={styles.ingredientItem}>
-    <Text style={styles.ingredientText}>• {ingredient.name}</Text>
-    {renderStockStatus(ingredient)}
-  </View>
-))}
+                <View key={index} style={styles.ingredientItem}>
+                  <Text style={styles.ingredientText}>• {ingredient.name}</Text>
+                  {renderStockStatus(ingredient)}
+                </View>
+              ))}
             </View>
 
             {/* Add Missing Ingredients Button */}
@@ -399,6 +461,8 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
               style={[styles.addButton, missingIngredients.length === 0 && styles.buttonDisabled]}
               onPress={openConfirmDialog}
               disabled={missingIngredients.length === 0}
+              accessibilityLabel="Add Missing Ingredients"
+              accessibilityHint="Adds missing ingredients to your shopping list"
             >
               <Text style={styles.addButtonText}>Add Missing Ingredients</Text>
             </TouchableOpacity>
@@ -420,12 +484,18 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
               </ScrollView>
             </View>
 
-            <TouchableOpacity style={styles.cookButton} onPress={startCooking}>
+            <TouchableOpacity
+              style={styles.cookButton}
+              onPress={startCooking}
+              accessibilityLabel="Start Cooking"
+              accessibilityHint="Begins the cooking instructions"
+            >
               <Text style={styles.cookButtonText}>Start Cooking</Text>
             </TouchableOpacity>
           </>
         )}
 
+        {/* Cooking Instructions */}
         {isCooking && (
           <View style={styles.cookingContainer}>
             <Text style={styles.subTitle}>Cooking Instructions</Text>
@@ -446,15 +516,27 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
                 style={[styles.navButton, currentStep === 0 && styles.buttonDisabled]}
                 onPress={prevStep}
                 disabled={currentStep === 0}
+                accessibilityLabel="Previous Step"
+                accessibilityHint="Goes to the previous cooking step"
               >
                 <Text style={styles.navButtonText}>Previous</Text>
               </TouchableOpacity>
               {currentStep < instructions.length - 1 ? (
-                <TouchableOpacity style={styles.navButton} onPress={nextStep}>
+                <TouchableOpacity
+                  style={styles.navButton}
+                  onPress={nextStep}
+                  accessibilityLabel="Next Step"
+                  accessibilityHint="Goes to the next cooking step"
+                >
                   <Text style={styles.navButtonText}>Next</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={styles.navButton} onPress={finishCooking}>
+                <TouchableOpacity
+                  style={styles.navButton}
+                  onPress={finishCooking}
+                  accessibilityLabel="Finish Cooking"
+                  accessibilityHint="Completes the cooking process"
+                >
                   <Text style={styles.navButtonText}>Finish Cooking</Text>
                 </TouchableOpacity>
               )}
@@ -478,7 +560,7 @@ const parseIngredients = (ingredientsStr, ingredientStatusData, similarityThresh
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFFFFF', // Set background to white
   },
   content: {
     paddingBottom: 20,
@@ -490,11 +572,44 @@ const styles = StyleSheet.create({
     width: screenWidth,
     height: 250,
   },
+  noImageText: {
+    width: screenWidth,
+    height: 250,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    backgroundColor: '#CCCCCC',
+    color: '#666666',
+    fontSize: 18,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 50, // Adjust as needed
+    left: 20, // Adjust as needed
+    backgroundColor: '#FFFFFFAA', // Semi-transparent background for visibility
+    padding: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButtonBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backIcon: {
+    width: 16,
+    height: 16,
+    tintColor: '#000',
+    marginRight: 5,
+  },
+  backButtonText: {
+    fontSize: 14,
+    color: '#000',
+  },
   favoriteButton: {
     position: 'absolute',
-    top: 50,
-    right: 20,
-    backgroundColor: '#FFFFFFAA',
+    top: 50, // Same top as backButton for alignment
+    right: 20, // Adjust as needed
+    backgroundColor: '#FFFFFFAA', // Semi-transparent background for visibility
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -507,30 +622,6 @@ const styles = StyleSheet.create({
   },
   favoriteButtonActive: {
     color: '#FF0000',
-  },
-  backButton: {
-    marginTop: 10,
-    marginLeft: 10,
-    alignSelf: 'flex-start',
-  },
-  backButtonBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEEEEE',
-    paddingVertical: 6,
-    paddingHorizontal: 18,
-    borderRadius: 5,
-    width: 'auto',
-  },
-  backIcon: {
-    width: 16,
-    height: 16,
-    tintColor: '#000',
-    marginRight: 5,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#000',
   },
   headerTitle: {
     fontSize: 28,
@@ -591,6 +682,11 @@ const styles = StyleSheet.create({
   servingsValue: {
     fontSize: 16,
     marginHorizontal: 10,
+  },
+  servingIcon: {
+    width: 20,
+    height: 20,
+    marginRight: 10,
   },
   section: {
     marginHorizontal: 10,
@@ -708,6 +804,19 @@ const styles = StyleSheet.create({
   stockIcon: {
     width: 20,
     height: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF', // White background
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: screenWidth,
+    height: screenHeight,
+  },
+  loadingImage: {
+    width: screenWidth * 0.5, // Adjust size as needed
+    height: screenWidth * 0.5,
+    resizeMode: 'contain',
   },
 });
 

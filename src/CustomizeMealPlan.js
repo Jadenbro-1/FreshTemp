@@ -1,19 +1,38 @@
+// CustomizeMealPlan.js
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, StatusBar, FlatList } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  ScrollView,
+  Modal,
+  TextInput,
+  Alert,
+  StatusBar,
+  ActivityIndicator,
+} from 'react-native';
 import { Slider } from '@rneui/themed';
-import Svg, { Circle, Text as SvgText } from 'react-native-svg';
+import { useNavigation } from '@react-navigation/native';
+import Navbar from './Navbar'; // Ensure Navbar is correctly imported
 
 const CustomizeMealPlan = () => {
+  const navigation = useNavigation();
+
   const [calories, setCalories] = useState(2000);
   const [protein, setProtein] = useState(150);
   const [carbs, setCarbs] = useState(200);
   const [fat, setFat] = useState(65);
-  const [selectedPreset, setSelectedPreset] = useState("Default");
+  const [selectedPreset, setSelectedPreset] = useState('Default');
   const [modalVisible, setModalVisible] = useState(false);
   const [customizationName, setCustomizationName] = useState('');
-  const [selectedColor, setSelectedColor] = useState('Red');
-  const [selectedIcon, setSelectedIcon] = useState('/Users/jadenbro1/FreshTemp/assets/carrot.png');
-  const [showIconDropdown, setShowIconDropdown] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Flag to track which slider is currently being adjusted
+  const [currentAdjusting, setCurrentAdjusting] = useState(null);
 
   const presets = {
     Default: {
@@ -36,25 +55,71 @@ const CustomizeMealPlan = () => {
     },
   };
 
-  const icons = [
-    { name: 'Carrot', path: '/Users/jadenbro1/FreshTemp/assets/carrot.png' },
-    { name: 'Fruit', path: '/Users/jadenbro1/FreshTemp/assets/fruit.png' },
-    { name: 'Grain', path: '/Users/jadenbro1/FreshTemp/assets/grain.png' },
-    { name: 'Protein', path: '/Users/jadenbro1/FreshTemp/assets/protein.png' },
-  ];
-
   const handlePresetChange = (preset) => {
     setSelectedPreset(preset);
-    setCalories(presets[preset].calories);
-    setProtein(presets[preset].protein);
-    setCarbs(presets[preset].carbs);
-    setFat(presets[preset].fat);
+    const newPreset = presets[preset];
+    setCalories(newPreset.calories);
+    setProtein(newPreset.protein);
+    setCarbs(newPreset.carbs);
+    setFat(newPreset.fat);
   };
 
-  const totalCalories = protein * 4 + carbs * 4 + fat * 9;
+  // Calculate total calories based on macros
+  const calculateTotalCalories = (prot, carb, f) => {
+    return prot * 4 + carb * 4 + f * 9;
+  };
+
+  // Calculate macro percentages for visualization (optional)
+  const totalCalories = calculateTotalCalories(protein, carbs, fat);
   const proteinPercentage = ((protein * 4) / totalCalories) * 100;
   const carbsPercentage = ((carbs * 4) / totalCalories) * 100;
   const fatPercentage = ((fat * 9) / totalCalories) * 100;
+
+  // Handle Calories Slider Change
+  const handleCaloriesChange = (newCalories) => {
+    if (currentAdjusting !== 'calories') {
+      setCurrentAdjusting('calories');
+      const scaleFactor = newCalories / calories;
+      setProtein(Math.round(protein * scaleFactor));
+      setCarbs(Math.round(carbs * scaleFactor));
+      setFat(Math.round(fat * scaleFactor));
+      setCalories(newCalories);
+      setCurrentAdjusting(null);
+    }
+  };
+
+  // Handle Protein Slider Change
+  const handleProteinChange = (newProtein) => {
+    if (currentAdjusting !== 'protein') {
+      setCurrentAdjusting('protein');
+      setProtein(newProtein);
+      const newTotalCalories = calculateTotalCalories(newProtein, carbs, fat);
+      setCalories(newTotalCalories);
+      setCurrentAdjusting(null);
+    }
+  };
+
+  // Handle Carbs Slider Change
+  const handleCarbsChange = (newCarbs) => {
+    if (currentAdjusting !== 'carbs') {
+      setCurrentAdjusting('carbs');
+      setCarbs(newCarbs);
+      const newTotalCalories = calculateTotalCalories(protein, newCarbs, fat);
+      setCalories(newTotalCalories);
+      setCurrentAdjusting(null);
+    }
+  };
+
+  // Handle Fat Slider Change
+  const handleFatChange = (newFat) => {
+    if (currentAdjusting !== 'fat') {
+      setCurrentAdjusting('fat');
+      setFat(newFat);
+      const newTotalCalories = calculateTotalCalories(protein, carbs, newFat);
+      setCalories(newTotalCalories);
+      setCurrentAdjusting(null);
+    }
+  };
 
   const handleSaveCustomization = async () => {
     if (!customizationName.trim()) {
@@ -62,23 +127,26 @@ const CustomizeMealPlan = () => {
       return;
     }
 
+    setIsSaving(true);
+
     try {
-      const response = await fetch('https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/customizations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: 1, // Replace with actual user ID
-          name: customizationName,
-          calories,
-          protein,
-          carbs,
-          fats: fat,
-          color: selectedColor,
-          icon: selectedIcon,
-        }),
-      });
+      const response = await fetch(
+        'https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/customizations',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: 1, // Replace with actual user ID
+            name: customizationName,
+            calories,
+            protein,
+            carbs,
+            fats: fat,
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error('Network response was not ok');
@@ -87,30 +155,46 @@ const CustomizeMealPlan = () => {
       const data = await response.json();
       console.log('Customization saved successfully:', data);
 
+      setIsSaving(false);
       setModalVisible(false);
       Alert.alert('Success', 'Customization saved successfully!');
+      setCustomizationName('');
     } catch (error) {
       console.error('Error saving customization:', error);
+      setIsSaving(false);
       Alert.alert('Error', 'An error occurred while saving the customization.');
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#222831" barStyle="light-content" />
+      <StatusBar backgroundColor="#1F2937" barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.scrollView}>
-
-        {/* Header */}
+        {/* Header with Back Button */}
         <View style={styles.header}>
-          <Image source={require('/Users/jadenbro1/FreshTemp/assets/heart.png')} style={[styles.headerIcon, { tintColor: 'purple' }]} />
-          <Text style={styles.headerText}>Customize Meal Plan</Text>
-          <Text style={styles.subText}>Adjust your daily macro intake or select a preset diet plan.</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Go Back"
+            accessibilityHint="Navigates to the previous screen"
+          >
+            <Image
+              source={require('../assets/back.png')} // Ensure you have a back_arrow.png in your assets
+              style={styles.backIcon}
+              accessibilityLabel="Back Arrow Icon"
+            />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Customize Meal Plan</Text>
         </View>
 
         {/* Preset Diet Selection */}
         <View style={styles.presetContainer}>
           <Text style={styles.sectionHeader}>
-            <Image source={require('/Users/jadenbro1/FreshTemp/assets/trending.png')} style={[styles.icon, { tintColor: 'orange' }]} />
+            <Image
+              source={require('../assets/trending.png')}
+              style={[styles.icon, { tintColor: 'orange' }]}
+              accessibilityLabel="Trending Icon"
+            />
             Select Preset Diet
           </Text>
           <View style={styles.presetSelector}>
@@ -122,8 +206,10 @@ const CustomizeMealPlan = () => {
                   selectedPreset === preset && styles.selectedPreset,
                 ]}
                 onPress={() => handlePresetChange(preset)}
+                accessibilityLabel={`${preset} Preset`}
+                accessibilityHint={`Select the ${preset} diet preset`}
               >
-                <Text>{preset}</Text>
+                <Text style={styles.presetText}>{preset}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -132,115 +218,124 @@ const CustomizeMealPlan = () => {
         {/* Adjust Macros */}
         <View style={styles.macroContainer}>
           <Text style={styles.sectionHeader}>
-            <Image source={require('/Users/jadenbro1/FreshTemp/assets/chart.png')} style={[styles.icon, { tintColor: 'blue' }]} />
+            <Image
+              source={require('../assets/chart.png')}
+              style={[styles.icon, { tintColor: 'blue' }]}
+              accessibilityLabel="Chart Icon"
+            />
             Adjust Macros
           </Text>
 
           <MetricSlider
             label="Calories"
             value={calories}
-            setValue={setCalories}
-            min={0}
+            setValue={handleCaloriesChange}
+            min={500}
             max={4000}
-            icon={require('/Users/jadenbro1/FreshTemp/assets/calorie.png')}
-            thumbSize={15}
-            color="blue"
+            icon={require('../assets/calorie.png')}
+            color="#5FC6FF"
+            accessibilityLabel="Calories Slider"
+            accessibilityHint="Adjust your daily calorie intake"
           />
 
           <MetricSlider
-            label="Protein"
+            label="Protein (g)"
             value={protein}
-            setValue={setProtein}
-            min={0}
+            setValue={handleProteinChange}
+            min={50}
             max={300}
-            icon={require('/Users/jadenbro1/FreshTemp/assets/Proteins.png')}
-            thumbSize={15}
-            color="red"
+            icon={require('../assets/Proteins.png')}
+            color="#ef4444"
+            accessibilityLabel="Protein Slider"
+            accessibilityHint="Adjust your daily protein intake in grams"
           />
 
           <MetricSlider
-            label="Carbs"
+            label="Carbs (g)"
             value={carbs}
-            setValue={setCarbs}
-            min={0}
+            setValue={handleCarbsChange}
+            min={50}
             max={400}
-            icon={require('/Users/jadenbro1/FreshTemp/assets/carbs.png')}
-            thumbSize={15}
-            color="green"
+            icon={require('../assets/carbs.png')}
+            color="#10b981"
+            accessibilityLabel="Carbohydrates Slider"
+            accessibilityHint="Adjust your daily carbohydrate intake in grams"
           />
 
           <MetricSlider
-            label="Fat"
+            label="Fat (g)"
             value={fat}
-            setValue={setFat}
-            min={0}
+            setValue={handleFatChange}
+            min={20}
             max={130}
-            icon={require('/Users/jadenbro1/FreshTemp/assets/fats.png')}
-            thumbSize={15}
-            color="orange"
+            icon={require('../assets/fats.png')}
+            color="#f59e0b"
+            accessibilityLabel="Fat Slider"
+            accessibilityHint="Adjust your daily fat intake in grams"
           />
         </View>
 
         {/* Nutrition Overview */}
         <View style={styles.nutritionContainer}>
           <Text style={styles.sectionHeader}>
-            <Image source={require('/Users/jadenbro1/FreshTemp/assets/heart.png')} style={[styles.icon, { tintColor: 'purple' }]} />
+            <Image
+              source={require('../assets/heart.png')}
+              style={[styles.icon, { tintColor: 'purple' }]}
+              accessibilityLabel="Heart Icon"
+            />
             Nutrition Overview
           </Text>
-          <View style={styles.circleChart}>
-            <Svg height="200" width="200">
-              <Circle cx="100" cy="100" r="80" stroke="#e5e7eb" strokeWidth="20" fill="none" />
-              <Circle
-                cx="100" cy="100" r="80"
-                stroke="#f59e0b" // Fat color
-                strokeWidth="20"
-                strokeDasharray={`${(fatPercentage / 100) * 500}, 500`}
-                fill="none"
+          <View style={styles.barChartContainer}>
+            <View style={styles.bar}>
+              <View
+                style={[
+                  styles.barSegment,
+                  { width: `${proteinPercentage.toFixed(1)}%`, backgroundColor: '#ef4444' },
+                ]}
+                accessibilityLabel={`Protein: ${proteinPercentage.toFixed(1)}%`}
               />
-              <Circle
-                cx="100" cy="100" r="80"
-                stroke="#10b981" // Carbs color
-                strokeWidth="20"
-                strokeDasharray={`${(carbsPercentage / 100) * 500}, 500`}
-                strokeDashoffset={-(fatPercentage / 100) * 500}
-                fill="none"
+              <View
+                style={[
+                  styles.barSegment,
+                  { width: `${carbsPercentage.toFixed(1)}%`, backgroundColor: '#10b981' },
+                ]}
+                accessibilityLabel={`Carbohydrates: ${carbsPercentage.toFixed(1)}%`}
               />
-              <Circle
-                cx="100" cy="100" r="80"
-                stroke="#ef4444" // Protein color
-                strokeWidth="20"
-                strokeDasharray={`${(proteinPercentage / 100) * 500}, 500`}
-                strokeDashoffset={-((fatPercentage + carbsPercentage) / 100) * 500}
-                fill="none"
+              <View
+                style={[
+                  styles.barSegment,
+                  { width: `${fatPercentage.toFixed(1)}%`, backgroundColor: '#f59e0b' },
+                ]}
+                accessibilityLabel={`Fat: ${fatPercentage.toFixed(1)}%`}
               />
-              {/* Main calories text */}
-              <SvgText
-                x="100"           // Center horizontally in SVG
-                y="90"            // Positioned slightly above the center
-                fontSize="34"
-                fontWeight="bold"
-                fill="black"
-                textAnchor="middle"  // Center the text horizontally
-                alignmentBaseline="middle"  // Center the text vertically
-              >
-                {calories}
-              </SvgText>
-              {/* Smaller 'kcal' text */}
-              <SvgText
-                x="100"           // Same horizontal center as the main number
-                y="120"           // Positioned slightly below the main calorie number
-                fontSize="18"     // Smaller font size for 'kcal'
-                fill="grey"       // Lighter font color for 'kcal'
-                textAnchor="middle"
-              >
-                kcal
-              </SvgText>
-            </Svg>
+            </View>
+            <View style={styles.caloriesTextContainer}>
+              <Text style={styles.caloriesText}>{calories} kcal</Text>
+            </View>
+          </View>
+          <View style={styles.percentagesContainer}>
+            <View style={styles.percentageItem}>
+              <View style={[styles.colorBox, { backgroundColor: '#ef4444' }]} />
+              <Text style={styles.percentageText}>Protein</Text>
+            </View>
+            <View style={styles.percentageItem}>
+              <View style={[styles.colorBox, { backgroundColor: '#10b981' }]} />
+              <Text style={styles.percentageText}>Carbs</Text>
+            </View>
+            <View style={styles.percentageItem}>
+              <View style={[styles.colorBox, { backgroundColor: '#f59e0b' }]} />
+              <Text style={styles.percentageText}>Fat</Text>
+            </View>
           </View>
         </View>
 
         {/* Save Button */}
-        <TouchableOpacity style={styles.saveButton} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity
+          style={styles.saveButton}
+          onPress={() => setModalVisible(true)}
+          accessibilityLabel="Save Meal Plan"
+          accessibilityHint="Open modal to save your meal plan customization"
+        >
           <Text style={styles.saveButtonText}>Save Meal Plan</Text>
         </TouchableOpacity>
 
@@ -250,69 +345,92 @@ const CustomizeMealPlan = () => {
           transparent={true}
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
+          accessibilityViewIsModal={true}
+          accessibilityLabel="Save Customization Modal"
         >
-          <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Save Customization</Text>
-            
-            <Text style={styles.label}>Name</Text>
-            <TextInput
-              style={styles.input}
-              onChangeText={setCustomizationName}
-              value={customizationName}
-              placeholder="Enter name"
-            />
-
-            <Text style={styles.label}>Color</Text>
-            <TouchableOpacity style={styles.dropdown}>
-              <Text>{selectedColor}</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.label}>Icon</Text>
+          <View style={styles.modalOverlay}>
             <TouchableOpacity
-              style={styles.dropdown}
-              onPress={() => setShowIconDropdown(!showIconDropdown)}
-            >
-              <Image source={{ uri: selectedIcon }} style={styles.iconPreview} />
-              <Text> {icons.find(icon => icon.path === selectedIcon)?.name} </Text>
-            </TouchableOpacity>
+              style={styles.modalBackground}
+              activeOpacity={1}
+              onPressOut={() => setModalVisible(false)}
+              accessible={false}
+            />
+          </View>
+          <View style={styles.modalView}>
+            {isSaving ? (
+              <View style={styles.loadingContainer}>
+                <Image
+                  source={require('../assets/loading3.gif')}
+                  style={styles.loadingGif}
+                  resizeMode="contain"
+                  accessibilityLabel="Saving customization, please wait"
+                />
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Save Customization</Text>
 
-            {/* Icon Dropdown */}
-            {showIconDropdown && (
-              <FlatList
-                data={icons}
-                keyExtractor={(item) => item.name}
-                renderItem={({ item }) => (
+                <Text style={styles.label}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  onChangeText={setCustomizationName}
+                  value={customizationName}
+                  placeholder="Enter name"
+                  placeholderTextColor="#4B5563"
+                  accessibilityLabel="Customization Name Input"
+                  accessibilityHint="Enter the name for your meal plan customization"
+                />
+
+                <View style={styles.modalButtons}>
                   <TouchableOpacity
-                    style={styles.iconOption}
-                    onPress={() => {
-                      setSelectedIcon(item.path);
-                      setShowIconDropdown(false);
-                    }}
+                    style={styles.modalButtonCancel}
+                    onPress={() => setModalVisible(false)}
+                    accessibilityLabel="Cancel"
+                    accessibilityHint="Cancel saving the customization"
                   >
-                    <Image source={{ uri: item.path }} style={styles.iconPreview} />
-                    <Text>{item.name}</Text>
+                    <Text style={styles.modalButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                )}
-              />
+                  <TouchableOpacity
+                    style={styles.modalButtonAdd}
+                    onPress={handleSaveCustomization}
+                    accessibilityLabel="Save Customization"
+                    accessibilityHint="Save your meal plan customization"
+                  >
+                    <Text style={styles.modalButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
-
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveCustomization}>
-              <Text style={styles.saveButtonText}>Save Customization</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
-              <Text style={styles.saveButtonText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </Modal>
       </ScrollView>
+
+      {/* Navbar */}
+      <Navbar currentScreen="CustomizeMealPlan" />
     </SafeAreaView>
   );
 };
 
-const MetricSlider = ({ label, value, setValue, min, max, icon, color = "#00adb5", thumbSize = 20 }) => (
+// MetricSlider Component
+const MetricSlider = ({
+  label,
+  value,
+  setValue,
+  min,
+  max,
+  icon,
+  color = '#00adb5',
+  thumbSize = 20,
+  accessibilityLabel,
+  accessibilityHint,
+}) => (
   <View style={styles.metricContainer}>
     <Text style={styles.metricLabel}>
-      <Image source={icon} style={[styles.icon, { tintColor: color, width: 24, height: 24, resizeMode: 'contain' }]} />
+      <Image
+        source={icon}
+        style={[styles.icon, { tintColor: color, width: 24, height: 24, resizeMode: 'contain' }]}
+        accessibilityLabel={`${label} Icon`}
+      />
       {label}: {value}
     </Text>
     <Slider
@@ -323,8 +441,10 @@ const MetricSlider = ({ label, value, setValue, min, max, icon, color = "#00adb5
       step={1}
       thumbTintColor={color}
       minimumTrackTintColor={color}
-      maximumTrackTintColor="#393e46"
+      maximumTrackTintColor="#D1D5DB"
       thumbStyle={{ height: thumbSize, width: thumbSize }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
     />
   </View>
 );
@@ -332,35 +452,41 @@ const MetricSlider = ({ label, value, setValue, min, max, icon, color = "#00adb5
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F9FAFB', // Light background for consistency
   },
   scrollView: {
     paddingHorizontal: 20,
+    paddingBottom: 100, // To accommodate Navbar
   },
   header: {
-    paddingVertical: 20,
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
   },
-  headerIcon: {
-    width: 40,
-    height: 40,
+  backButton: {
+    padding: 10,
+    marginRight: 10,
   },
-  headerText: {
+  backIcon: {
+    width: 24,
+    height: 24,
+    tintColor: '#1F2937',
+  },
+  headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 10,
-  },
-  subText: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 5,
-    textAlign: 'center',
+    color: '#1F2937',
   },
   presetContainer: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#FFFFFF',
     padding: 20,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   sectionHeader: {
     fontSize: 18,
@@ -368,6 +494,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    color: '#1F2937',
+  },
+  icon: {
+    width: 24,
+    height: 24,
+    marginRight: 10,
   },
   presetSelector: {
     flexDirection: 'row',
@@ -377,17 +509,31 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 5,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   selectedPreset: {
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#E5E7EB',
+    borderColor: '#5FC6FF',
+  },
+  presetText: {
+    fontSize: 16,
+    color: '#1F2937',
   },
   macroContainer: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#FFFFFF',
     padding: 20,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   metricContainer: {
     marginBottom: 20,
@@ -397,85 +543,146 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    color: '#1F2937',
   },
   nutritionContainer: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#FFFFFF',
     padding: 20,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 20,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  circleChart: {
-    position: 'relative',
+  barChartContainer: {
+    width: '100%',
+    marginTop: 10,
+  },
+  bar: {
+    flexDirection: 'row',
+    height: 30,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  barSegment: {
+    height: '100%',
+  },
+  caloriesTextContainer: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  caloriesText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  percentagesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+    width: '100%',
+  },
+  percentageItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  colorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  percentageText: {
+    fontSize: 14,
+    color: '#1F2937',
   },
   saveButton: {
-    backgroundColor: '#6d28d9',
+    backgroundColor: '#5FC6FF',
     paddingVertical: 15,
     paddingHorizontal: 25,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 0,
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   saveButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalView: {
-    flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
     padding: 20,
-    backgroundColor: 'white',
-    marginHorizontal: 20,
-    borderRadius: 10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    elevation: 5,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 20,
+    color: '#1F2937',
     textAlign: 'center',
   },
   label: {
     fontSize: 14,
-    marginVertical: 10,
+    marginBottom: 5,
+    color: '#374151',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    borderRadius: 5,
+    borderColor: '#D1D5DB',
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 20,
+    fontSize: 14,
+    color: '#1F2937',
   },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 20,
+  modalButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  iconPreview: {
-    width: 30,
-    height: 30,
-    marginRight: 10,
-  },
-  iconOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  cancelButton: {
-    backgroundColor: '#ff5252',
-    marginTop: 10,
+  modalButtonCancel: {
     paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-  },
-  icon: {
-    width: 24,
-    height: 24, // Adjusted icon size
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#D1D5DB',
     marginRight: 10,
+  },
+  modalButtonAdd: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#5FC6FF',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 200,
+  },
+  loadingGif: {
+    width: 100,
+    height: 100,
   },
 });
 

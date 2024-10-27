@@ -13,9 +13,10 @@ import {
   Modal,
   ActivityIndicator,
   SafeAreaView,
+  FlatList,
 } from 'react-native';
 import axios from 'axios';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import moment from 'moment';
 import Navbar from './Navbar'; // Ensure Navbar is correctly imported
 
@@ -39,6 +40,7 @@ const categoryColors = {
 
 const PantryScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
 
   const [pantryItems, setPantryItems] = useState([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -46,6 +48,10 @@ const PantryScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // State for Receipt Items Confirmation Modal
+  const [receiptItems, setReceiptItems] = useState([]);
+  const [isReceiptModalVisible, setIsReceiptModalVisible] = useState(false);
 
   const categories = [
     'Fruits',
@@ -102,6 +108,16 @@ const PantryScreen = () => {
   useEffect(() => {
     fetchPantryData();
   }, []);
+
+  useEffect(() => {
+    // Check if there are receiptItems passed via navigation
+    if (route.params && route.params.receiptItems) {
+      setReceiptItems(route.params.receiptItems);
+      setIsReceiptModalVisible(true);
+      // Clear the receiptItems from navigation params to prevent reopening the modal
+      navigation.setParams({ receiptItems: null });
+    }
+  }, [route.params]);
 
   const fetchPantryData = async () => {
     const apiUrl = 'https://fresh-ios-c3a9e8c545dd.herokuapp.com';
@@ -260,7 +276,7 @@ const PantryScreen = () => {
       quantity: `${formData.quantity} ${formData.metric}`,
       expiration_date: formData.expires,
       type: formData.category,
-      user_id: 1, // Replace with actual user ID
+      user_id: userId, // Use actual user ID
     };
 
     try {
@@ -291,12 +307,44 @@ const PantryScreen = () => {
     setShowAddModal(true);
   };
 
+  // Handle confirming receipt items
+  const handleConfirmReceiptItems = async () => {
+    if (receiptItems.length === 0) {
+      setIsReceiptModalVisible(false);
+      return;
+    }
+
+    const apiUrl = 'https://fresh-ios-c3a9e8c545dd.herokuapp.com';
+    const itemsToAdd = receiptItems.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      expiration_date: item.expiration_date !== 'No Expiration Date' ? item.expiration_date : null,
+      type: item.type, // Ensure 'type' is provided; adjust based on your backend
+      user_id: userId,
+    }));
+
+    try {
+      await axios.post(`${apiUrl}/api/pantry/bulk`, { items: itemsToAdd });
+      Alert.alert('Success', 'Items added to your pantry successfully.');
+      setIsReceiptModalVisible(false);
+      fetchPantryData();
+    } catch (error) {
+      console.error('Error adding receipt items to pantry:', error);
+      Alert.alert('Error', 'Failed to add receipt items to pantry.');
+      setIsReceiptModalVisible(false);
+    }
+  };
+
   // Render loading state
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#AED6F1" />
-        <Text style={styles.loadingText}>Loading your pantry items...</Text>
+        <Image
+          source={require('../assets/loading3.gif')} // Updated to loading3.gif
+          style={styles.loadingGif}
+          resizeMode="contain"
+          accessibilityLabel="Loading pantry items, please wait"
+        />
       </View>
     );
   }
@@ -305,46 +353,49 @@ const PantryScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        {/* Header Top with Logo and (Removed) Header Icons */}
         <View style={styles.headerTop}>
           <Text style={styles.logoText}>Pantry</Text>
-          <View style={styles.headerIcons}>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('WeeklyMealPlan')}
-            >
-              <Image
-                source={require('../assets/schedule.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('GroceryPlanner')}
-            >
-              <Image
-                source={require('../assets/cart2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Pantry')}
-            >
-              <Image
-                source={require('../assets/carrot2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Nutritionist')}
-            >
-              <Image
-                source={require('../assets/nutrition2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Removed headerIcons */}
+        </View>
+
+        {/* Navigation Tabs */}
+        <View style={styles.navigationTabs}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('WeeklyMealPlan')}
+            style={styles.tabButton}
+            accessibilityLabel="Meal Plan Tab"
+            accessibilityHint="Navigate to Meal Plan"
+          >
+            <Text style={styles.tabText}>Meal Plan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('GroceryPlanner')}
+            style={styles.tabButton}
+            accessibilityLabel="Grocery Tab"
+            accessibilityHint="Navigate to Grocery Planner"
+          >
+            <Text style={styles.tabText}>Grocery</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Pantry')}
+            style={[
+              styles.tabButton,
+              styles.activeTabButton, // Active tab
+            ]}
+            accessibilityLabel="Pantry Tab"
+            accessibilityHint="Navigate to Pantry"
+          >
+            <Text style={[styles.tabText, styles.activeTabText]}>Pantry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Nutritionist')}
+            style={styles.tabButton}
+            accessibilityLabel="Nutrition Tab"
+            accessibilityHint="Navigate to Nutritionist"
+          >
+            <Text style={styles.tabText}>Nutrition</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Search bar */}
@@ -352,6 +403,7 @@ const PantryScreen = () => {
           <Image
             source={require('../assets/search.png')}
             style={styles.searchIcon}
+            accessibilityLabel="Search Icon"
           />
           <TextInput
             style={styles.searchInput}
@@ -359,10 +411,14 @@ const PantryScreen = () => {
             placeholderTextColor="#9CA3AF"
             value={searchTerm}
             onChangeText={setSearchTerm}
+            accessibilityLabel="Search Pantry Items"
+            accessibilityHint="Search for specific pantry items"
           />
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setIsFilterOpen(!isFilterOpen)}
+            accessibilityLabel="Filter Button"
+            accessibilityHint="Open filter options for pantry items"
           >
             <Text style={styles.filterButtonText}>Filter</Text>
           </TouchableOpacity>
@@ -380,6 +436,8 @@ const PantryScreen = () => {
                     activeFilters.includes(category) ? styles.activeFilterItem : null,
                   ]}
                   onPress={() => toggleFilter(category)}
+                  accessibilityLabel={`${category} Filter`}
+                  accessibilityHint={`Filter pantry items by ${category}`}
                 >
                   <Text
                     style={[
@@ -407,6 +465,7 @@ const PantryScreen = () => {
               <Image
                 source={getCategoryIcon(category)}
                 style={styles.iconSmallWhite}
+                accessibilityLabel={`${category} Icon`}
               />
               <Text style={styles.categoryTextWhite}>{category}</Text>
             </View>
@@ -419,7 +478,7 @@ const PantryScreen = () => {
                   <Text
                     style={[styles.itemExpiry, getExpirationColor(item.expiration_date)]}
                   >
-                    Expires: {formatDate(item.expiration_date)}
+                    {getExpirationText(item.expiration_date)}
                   </Text>
                   {/* Category Tag Next to Item */}
                   <View style={[styles.itemTag, getItemTagStyle(category)]}>
@@ -428,16 +487,26 @@ const PantryScreen = () => {
                 </View>
                 <View style={styles.itemDetails}>
                   <Text style={styles.itemQuantity}>{item.quantity}</Text>
-                  <TouchableOpacity onPress={() => handleEditItem(item)}>
+                  <TouchableOpacity
+                    onPress={() => handleEditItem(item)}
+                    accessibilityLabel={`Edit ${item.name}`}
+                    accessibilityHint="Edit this pantry item"
+                  >
                     <Image
-                      source={require('../assets/edit.png')}
+                      source={require('../assets/edit3.png')}
                       style={styles.actionIcon}
+                      accessibilityLabel="Edit Icon"
                     />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeItem(item.id)}>
+                  <TouchableOpacity
+                    onPress={() => removeItem(item.id)}
+                    accessibilityLabel={`Remove ${item.name}`}
+                    accessibilityHint="Remove this pantry item"
+                  >
                     <Image
                       source={require('../assets/trash2.png')}
                       style={styles.actionIcon}
+                      accessibilityLabel="Delete Icon"
                     />
                   </TouchableOpacity>
                 </View>
@@ -458,10 +527,13 @@ const PantryScreen = () => {
       <TouchableOpacity
         style={styles.floatingAddButton}
         onPress={() => setShowAddModal(true)}
+        accessibilityLabel="Add New Ingredient"
+        accessibilityHint="Open options to add a new pantry item"
       >
         <Image
           source={require('../assets/plus.png')}
           style={styles.floatingAddIcon}
+          accessibilityLabel="Plus Icon"
         />
       </TouchableOpacity>
 
@@ -471,6 +543,8 @@ const PantryScreen = () => {
         animationType="slide"
         transparent={true}
         onRequestClose={() => setShowAddModal(false)}
+        accessibilityViewIsModal={true}
+        accessibilityLabel="Add Ingredient Modal"
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -483,10 +557,13 @@ const PantryScreen = () => {
                   // Navigate to barcode scanner screen
                   navigation.navigate('BarcodeScanner');
                 }}
+                accessibilityLabel="Scan Barcode Option"
+                accessibilityHint="Open barcode scanner to add ingredient"
               >
                 <Image
                   source={require('../assets/barcode.png')}
                   style={styles.modalOptionIcon}
+                  accessibilityLabel="Barcode Icon"
                 />
                 <Text style={styles.modalOptionText}>Scan Barcode</Text>
               </TouchableOpacity>
@@ -497,10 +574,13 @@ const PantryScreen = () => {
                   // Navigate to receipt scanner screen
                   navigation.navigate('ReceiptCameraScreen');
                 }}
+                accessibilityLabel="Scan Receipt Option"
+                accessibilityHint="Open receipt scanner to add ingredient"
               >
                 <Image
                   source={require('../assets/receipt.png')}
                   style={styles.modalOptionIcon}
+                  accessibilityLabel="Receipt Icon"
                 />
                 <Text style={styles.modalOptionText}>Scan Receipt</Text>
               </TouchableOpacity>
@@ -511,10 +591,13 @@ const PantryScreen = () => {
                   // Navigate to manual entry screen
                   navigation.navigate('ManualEntry');
                 }}
+                accessibilityLabel="Manual Entry Option"
+                accessibilityHint="Open manual entry to add ingredient"
               >
                 <Image
-                  source={require('../assets/edit.png')}
+                  source={require('../assets/edit3.png')}
                   style={styles.modalOptionIcon}
+                  accessibilityLabel="Edit Icon"
                 />
                 <Text style={styles.modalOptionText}>Manual Entry</Text>
               </TouchableOpacity>
@@ -525,10 +608,13 @@ const PantryScreen = () => {
                   // Navigate to camera screen
                   navigation.navigate('CameraScreen');
                 }}
+                accessibilityLabel="Take Picture Option"
+                accessibilityHint="Open camera to take picture of ingredient"
               >
                 <Image
-                  source={require('../assets/scan.png')}
+                  source={require('../assets/camera.png')}
                   style={styles.modalOptionIcon}
+                  accessibilityLabel="Camera Icon"
                 />
                 <Text style={styles.modalOptionText}>Take Picture</Text>
               </TouchableOpacity>
@@ -536,9 +622,63 @@ const PantryScreen = () => {
             <TouchableOpacity
               style={styles.closeModalButton}
               onPress={() => setShowAddModal(false)}
+              accessibilityLabel="Cancel Adding Ingredient"
+              accessibilityHint="Close the add ingredient modal without adding"
             >
               <Text style={styles.closeModalButtonText}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal for Confirming Receipt Items */}
+      <Modal
+        visible={isReceiptModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsReceiptModalVisible(false)}
+        accessibilityViewIsModal={true}
+        accessibilityLabel="Confirm Receipt Items Modal"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.confirmModalContent}>
+            <Text style={styles.modalTitle}>Confirm Receipt Items</Text>
+            <FlatList
+              data={receiptItems}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.confirmItemContainer}>
+                  <Text style={styles.confirmItemName}>{item.name}</Text>
+                  <Text style={styles.confirmItemDetails}>
+                    {item.quantity}
+                    {item.expiration_date && ` | Expires: ${formatDate(item.expiration_date)}`}
+                  </Text>
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.noItemsText}>No items to confirm.</Text>
+              }
+              accessibilityLabel="Receipt Items List"
+              accessibilityHint="List of items extracted from the receipt"
+            />
+            <View style={styles.confirmButtonsContainer}>
+              <TouchableOpacity
+                style={styles.confirmButton}
+                onPress={handleConfirmReceiptItems}
+                accessibilityLabel="Confirm Adding Items"
+                accessibilityHint="Add the confirmed items to your pantry"
+              >
+                <Text style={styles.confirmButtonText}>Confirm</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setIsReceiptModalVisible(false)}
+                accessibilityLabel="Cancel Adding Items"
+                accessibilityHint="Dismiss the confirmation modal without adding items"
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -591,6 +731,29 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     tintColor: '#5FC6FF',
+  },
+  // Navigation Tabs Styles
+  navigationTabs: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  tabButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  activeTabButton: {
+    backgroundColor: '#5FC6FF',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   // Search bar styles
   searchContainer: {
@@ -810,11 +973,67 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#5FC6FF',
   },
+  // Modal Styles for Confirming Receipt Items
+  confirmModalContent: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '80%',
+  },
+  confirmItemContainer: {
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingBottom: 8,
+  },
+  confirmItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  confirmItemDetails: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  confirmButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 16,
+  },
+  confirmButton: {
+    backgroundColor: '#5FC6FF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: '#E5E7EB',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  cancelButtonText: {
+    color: '#1F2937',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   // Loading State Styles
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF', // Optional: set background to white for better visibility
+  },
+  loadingGif: {
+    width: 200,
+    height: 200,
   },
   loadingText: {
     marginTop: 12,

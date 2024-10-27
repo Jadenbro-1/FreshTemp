@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', // Default light background
     borderTopColor: '#e5e7eb',
     borderTopWidth: 1,
-    paddingVertical: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
@@ -168,9 +168,10 @@ const styles = StyleSheet.create({
     tintColor: '#5FC6FF', // Active icon color
   },
   navText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6b7280',
     marginTop: 2,
+    fontFamily: 'Cochin'
   },
   navTextDark: {
     color: '#ffffff', // Text color in dark mode

@@ -92,56 +92,65 @@ export default function NutritionDashboard() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        {/* Header Top with Logo and (Removed) Header Icons */}
         <View style={styles.headerTop}>
           <Text style={styles.logoText}>Nutrition</Text>
-          <View style={styles.headerIcons}>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('WeeklyMealPlan')}
-            >
-              <Image
-                source={require('../assets/schedule.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('GroceryPlanner')}
-            >
-              <Image
-                source={require('../assets/cart2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Pantry')}
-            >
-              <Image
-                source={require('../assets/carrot2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('NutritionDashboard')}
-            >
-              <Image
-                source={require('../assets/nutrition2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Removed headerIcons */}
         </View>
 
-        {/* Date Navigation */}
-        <View style={styles.dateNavigation}>
-          <TouchableOpacity style={styles.dateNavButton} onPress={() => changeDate('prev')}>
-            <Image source={require('../assets/left.png')} style={styles.navIcon} />
+        {/* Navigation Tabs */}
+        <View style={styles.navigationTabs}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('WeeklyMealPlan')}
+            style={styles.tabButton}
+            accessibilityLabel="Meal Plan Tab"
+            accessibilityHint="Navigate to Meal Plan"
+          >
+            <Text style={styles.tabText}>Meal Plan</Text>
           </TouchableOpacity>
-          <Text style={styles.dateText}>{formatDate(currentDate)}</Text>
-          <TouchableOpacity style={styles.dateNavButton} onPress={() => changeDate('next')}>
-            <Image source={require('../assets/arrow.png')} style={styles.navIcon} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('GroceryPlanner')}
+            style={styles.tabButton}
+            accessibilityLabel="Grocery Tab"
+            accessibilityHint="Navigate to Grocery Planner"
+          >
+            <Text style={styles.tabText}>Grocery</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Pantry')}
+            style={styles.tabButton}
+            accessibilityLabel="Pantry Tab"
+            accessibilityHint="Navigate to Pantry"
+          >
+            <Text style={styles.tabText}>Pantry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('NutritionDashboard')}
+            style={[styles.tabButton, styles.activeTabButton]} // Set Nutrition as active
+            accessibilityLabel="Nutrition Tab"
+            accessibilityHint="Navigate to Nutrition Dashboard"
+          >
+            <Text style={[styles.tabText, styles.activeTabText]}>Nutrition</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Internal Tabs: Macro and Micro Tracking */}
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            style={[styles.internalTab, styles.activeInternalTab]} // Set Macro as active by default
+            onPress={() => {}}
+            accessibilityLabel="Macro Tracking Tab"
+            accessibilityHint="Show macro tracking"
+          >
+            <Text style={[styles.internalTabText, styles.activeInternalTabText]}>Macros</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.internalTab}
+            onPress={() => {}}
+            accessibilityLabel="Micronutrient Tracking Tab"
+            accessibilityHint="Show micronutrient tracking"
+          >
+            <Text style={styles.internalTabText}>Micronutrients</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -174,6 +183,8 @@ export default function NutritionDashboard() {
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => openAddMacroModal(macro)}
+                accessibilityLabel={`Add ${macro.name}`}
+                accessibilityHint={`Add ${macro.name} to your daily intake`}
               >
                 <Image source={require('../assets/plus.png')} style={styles.addIcon} />
                 <Text style={styles.addButtonText}>Add</Text>
@@ -220,6 +231,8 @@ export default function NutritionDashboard() {
               keyboardType="numeric"
               value={addAmount}
               onChangeText={setAddAmount}
+              accessibilityLabel={`Enter amount for ${selectedMacro.name}`}
+              accessibilityHint={`Input the amount of ${selectedMacro.name} you consumed`}
             />
             <TouchableOpacity style={styles.modalButton} onPress={handleAddMacro}>
               <Text style={styles.modalButtonText}>Add {selectedMacro.name}</Text>
@@ -227,6 +240,8 @@ export default function NutritionDashboard() {
             <TouchableOpacity
               style={styles.modalCancelButton}
               onPress={() => setShowAddMacroModal(false)}
+              accessibilityLabel="Cancel Adding Macro"
+              accessibilityHint="Close the add macro modal without adding"
             >
               <Text style={styles.modalCancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -244,12 +259,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
-    paddingTop: 42, // Consistent with PantryScreen header positioning
+    paddingTop: 42, // Consistent with PantryScreen and GroceryPlanner
   },
   header: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    paddingVertical: 24, // Adjusted to match PantryScreen header
+    paddingVertical: 24, // Adjusted to match PantryScreen and GroceryPlanner
     paddingHorizontal: 16,
     marginBottom: 16,
     marginHorizontal: 16,
@@ -262,7 +277,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12, // Consistent with PantryScreen
+    marginBottom: 12, // Consistent with PantryScreen and GroceryPlanner
   },
   logoText: {
     fontSize: 32,
@@ -270,45 +285,72 @@ const styles = StyleSheet.create({
     color: '#5FC6FF', // Consistent theme color
     fontFamily: 'Cochin',
   },
-  headerIcons: {
+  // Removed headerIcons styles since headerIcons are removed
+
+  // Navigation Tabs Styles
+  navigationTabs: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
   },
-  iconButton: {
-    marginLeft: 16,
+  tabButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
   },
-  iconImage: {
-    width: 20,
-    height: 20,
-    tintColor: '#5FC6FF',
+  activeTabButton: {
+    backgroundColor: '#5FC6FF',
   },
-  dateNavigation: {
+  tabText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  // Internal Tabs (Macros and Micronutrients) Styles
+  tabs: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
     backgroundColor: '#F3F4F6',
     borderRadius: 9999,
+    padding: 4,
+    alignSelf: 'center',
+    width: '90%',
+    marginTop: 8,
+  },
+  internalTab: {
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: 9999,
   },
-  dateNavButton: {
-    padding: 8,
+  activeInternalTab: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
-  navIcon: {
-    width: 16,
-    height: 16,
-    tintColor: '#5FC6FF',
-  },
-  dateText: {
+  internalTabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#1F2937',
-    marginHorizontal: 8,
+    color: '#6B7280',
   },
+  activeInternalTabText: {
+    color: '#5FC6FF',
+    fontWeight: '600',
+  },
+  // Main Content Styles
   mainContent: {
     paddingHorizontal: 16,
     paddingBottom: 120, // Adjusted to accommodate Navbar
   },
+  contentContainer: {
+    paddingVertical: 16,
+  },
+  // Card Styles
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -330,6 +372,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#5FC6FF',
   },
+  // Macro Tracking Styles
   macroHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -378,6 +421,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
   },
+  // Micronutrient Tracking Styles
   microRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -403,6 +447,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  // Analyze Button Styles
   analyzeButton: {
     position: 'absolute',
     bottom: 90, // Adjusted to be above the Navbar (assuming Navbar height ~60)
@@ -429,6 +474,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
+  // Modal Styles
   modalContainer: {
     position: 'absolute',
     top: 0,

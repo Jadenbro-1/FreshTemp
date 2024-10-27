@@ -1,6 +1,6 @@
 // UserDashboard.js
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,24 +10,31 @@ import {
   StyleSheet,
   FlatList,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Navbar from './Navbar'; // Importing the Navbar component
+import axios from 'axios';
+import Video from 'react-native-video';
 
 export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState('trending');
+  const [videos, setVideos] = useState([]);
+  const [premiumRecipes, setPremiumRecipes] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const screenWidth = Dimensions.get('window').width;
 
   const navigation = useNavigation();
 
   const trendingVideos = [
-    { id: 1, chef: 'quickbites', title: 'Easy 5-min Breakfast', views: '1.2M', likes: '250K' },
-    { id: 2, chef: 'pastaqueen', title: 'Perfect Carbonara', views: '890K', likes: '180K' },
-    { id: 3, chef: 'veggielover', title: 'Colorful Buddha Bowl', views: '750K', likes: '120K' },
-    { id: 4, chef: 'dessertking', title: 'No-Bake Cheesecake', views: '1.5M', likes: '300K' },
-    { id: 5, chef: 'grillmaster', title: 'Juicy Steak Tips', views: '980K', likes: '200K' },
-    { id: 6, chef: 'healthyeats', title: 'Green Smoothie Bowl', views: '670K', likes: '140K' },
+    { id: 1, chef: 'quickbites', title: 'Spicy Vodka Pasta', views: '1.2M', likes: '250K' },
+    { id: 2, chef: 'pastaqueen', title: 'Creamy Basil Rotini', views: '890K', likes: '180K' },
+    { id: 3, chef: 'veggielover', title: 'Tomato Ricotta Pasta', views: '750K', likes: '120K' },
+    { id: 4, chef: 'dessertking', title: 'Cheesy Mac & Cheese', views: '1.5M', likes: '300K' },
+    { id: 5, chef: 'grillmaster', title: 'Spicy Pollo Taco', views: '980K', likes: '200K' },
+    { id: 6, chef: 'healthyeats', title: 'Spicy Pollo Quesadilla', views: '670K', likes: '140K' },
   ];
 
   const featuredChefs = [
@@ -88,7 +95,7 @@ export default function UserDashboard() {
       likes: 15000,
       category: 'Breakfast',
       rating: 4.5,
-      image: '/Users/jadenbro1/FreshTemp/assets/breakfast.png',
+      image: require('../assets/breakfast.png'),
       description:
         'Creamy avocado spread on artisanal sourdough bread, topped with cherry tomatoes, feta cheese, and a drizzle of extra virgin olive oil.',
       prepTime: '10 min',
@@ -102,7 +109,7 @@ export default function UserDashboard() {
       likes: 22000,
       category: 'Lunch',
       rating: 4.7,
-      image: '/Users/jadenbro1/FreshTemp/assets/breakfast.png',
+      image: require('../assets/breakfast.png'),
       description:
         'Rich, savory broth with tender slices of pork, soft-boiled egg, nori, and a blend of spices that pack a flavorful punch.',
       prepTime: '30 min',
@@ -116,7 +123,7 @@ export default function UserDashboard() {
       likes: 18000,
       category: 'Dessert',
       rating: 4.8,
-      image: '/Users/jadenbro1/FreshTemp/assets/breakfast.png',
+      image: require('../assets/breakfast.png'),
       description:
         'Decadent chocolate cake with a gooey, molten center. Served warm with a scoop of vanilla ice cream for the perfect indulgence.',
       prepTime: '25 min',
@@ -126,6 +133,58 @@ export default function UserDashboard() {
     },
   ];
 
+  useEffect(() => {
+    const fetchVideosAndRecipes = async () => {
+      try {
+        // Fetch videos
+        const videoResponse = await axios.get(
+          'https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/media'
+        );
+        const videoData = videoResponse.data.map((video) => ({
+          ...video,
+          url: video.url.startsWith('http')
+            ? video.url.replace('http://', 'https://')
+            : video.url,
+        }));
+        setVideos(videoData.slice(0, 6)); // Get the first 6 videos
+
+        // Fetch recipes
+        const recipeResponse = await axios.get(
+          'https://fresh-ios-c3a9e8c545dd.herokuapp.com/api/recipes'
+        );
+        const recipesData = recipeResponse.data;
+
+        // Map recipes to required format and filter for 5-star recipes
+        const mappedRecipes = recipesData
+          .filter((recipe) => recipe.ratings === 5)
+          .slice(0, 3) // Get the first 3 premium recipes
+          .map((recipe) => ({
+            id: recipe.id,
+            name: recipe.title,
+            image: recipe.image || 'https://via.placeholder.com/150', // Adjust as needed
+            rating: recipe.ratings || 0,
+            category: recipe.category ? recipe.category.split(',').map((cat) => cat.trim()) : [],
+            description: recipe.description,
+            chef: 'Chef ' + (recipe.id % 10), // Hardcoded chef name
+            tags: recipe.category ? recipe.category.split(',').map((cat) => cat.trim()) : ['Tag1', 'Tag2'],
+            prepTime: recipe.prep_time || '0',
+            servings: recipe.servings || 2,
+            difficulty: recipe.difficulty || 'Medium',
+            likes: recipe.likes || 0,
+          }));
+
+        setPremiumRecipes(mappedRecipes);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        Alert.alert('Error', 'Failed to fetch data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVideosAndRecipes();
+  }, []);
+
   const Header = React.memo(() => {
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -134,39 +193,15 @@ export default function UserDashboard() {
         <View style={styles.headerTop}>
           <Text style={styles.logoText}>Explore</Text>
           <View style={styles.headerIcons}>
+            {/* Messages Icon */}
             <TouchableOpacity
               style={styles.iconButton}
-              onPress={() => navigation.navigate('WeeklyMealPlan')}
+              onPress={() => navigation.navigate('Messenger')}
+              accessibilityLabel="Messages"
+              accessibilityHint="Navigate to your messages"
             >
               <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/schedule.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('GroceryPlanner')}
-            >
-              <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/cart2.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Pantry')}
-            >
-              <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/message.png')}
-                style={styles.iconImage}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('Nutritionist')}
-            >
-              <Image
-                source={require('/Users/jadenbro1/FreshTemp/assets/nutrition2.png')}
+                source={require('../assets/message.png')}
                 style={styles.iconImage}
               />
             </TouchableOpacity>
@@ -175,7 +210,7 @@ export default function UserDashboard() {
         {/* Search Bar */}
         <View style={styles.searchBar}>
           <Image
-            source={require('/Users/jadenbro1/FreshTemp/assets/search.png')}
+            source={require('../assets/search.png')}
             style={styles.searchIcon}
           />
           <TextInput
@@ -188,7 +223,7 @@ export default function UserDashboard() {
           {/* Filter Button */}
           <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/filter.png')}
+              source={require('../assets/filter.png')}
               style={styles.filterIcon}
             />
           </TouchableOpacity>
@@ -204,6 +239,8 @@ export default function UserDashboard() {
           <TouchableOpacity
             onPress={() => setActiveTab('trending')}
             style={[styles.tabButton, activeTab === 'trending' && styles.activeTabButton]}
+            accessibilityLabel="Trending Tab"
+            accessibilityHint="Show trending videos"
           >
             <Text style={[styles.tabText, activeTab === 'trending' && styles.activeTabText]}>
               Trending
@@ -212,6 +249,8 @@ export default function UserDashboard() {
           <TouchableOpacity
             onPress={() => setActiveTab('chefs')}
             style={[styles.tabButton, activeTab === 'chefs' && styles.activeTabButton]}
+            accessibilityLabel="Top Chefs Tab"
+            accessibilityHint="Show top chefs"
           >
             <Text style={[styles.tabText, activeTab === 'chefs' && styles.activeTabText]}>
               Top Chefs
@@ -220,6 +259,8 @@ export default function UserDashboard() {
           <TouchableOpacity
             onPress={() => setActiveTab('dishes')}
             style={[styles.tabButton, activeTab === 'dishes' && styles.activeTabButton]}
+            accessibilityLabel="Popular Dishes Tab"
+            accessibilityHint="Show popular dishes"
           >
             <Text style={[styles.tabText, activeTab === 'dishes' && styles.activeTabText]}>
               Popular Dishes
@@ -230,46 +271,75 @@ export default function UserDashboard() {
     </View>
   ));
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
     if (activeTab === 'trending') {
+      const hardcodedData = trendingVideos[index % trendingVideos.length];
       return (
-        <View style={styles.videoCard}>
+        <TouchableOpacity
+          style={styles.videoCard}
+          onPress={() =>
+            navigation.navigate('VideoPlayer', {
+              videoUrl: item.url,
+              username: item.username || 'unknown',
+              profilePic: item.profile_pic_url || '',
+              description: item.description || 'No description available',
+              comments: item.comments || [],
+              isFavorite: item.isFavorite || false,
+              isSubscribed: item.isSubscribed || false,
+            })
+          }
+          accessibilityLabel={`Play video: ${hardcodedData.title}`}
+          accessibilityHint="Navigate to video player"
+        >
           <View style={styles.videoImageContainer}>
-            <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/breakfast.png')}
-              style={styles.videoImage}
-            />
+            {item.url ? (
+              <Video
+                source={{ uri: item.url }}
+                style={styles.videoImage}
+                resizeMode="cover"
+                repeat={false}
+                paused={true}
+                onError={(error) => console.error(`Error loading video ${item.media_id}:`, error)}
+              />
+            ) : (
+              <Image
+                source={require('../assets/breakfast.png')}
+                style={styles.videoImage}
+              />
+            )}
             {/* Overlay */}
             <View style={styles.videoOverlay}>
-              <TouchableOpacity style={styles.videoPlayButton} onPress={() => {}}>
+              {/* Play Icon */}
+              <View style={styles.videoPlayButton}>
                 <Image
-                  source={require('/Users/jadenbro1/FreshTemp/assets/play.png')}
+                  source={require('../assets/play.png')}
                   style={styles.playIcon}
                 />
-              </TouchableOpacity>
+              </View>
+              {/* Video Info */}
               <View style={styles.videoInfoOverlay}>
-                <Text style={styles.videoTitle}>{item.title}</Text>
-                <Text style={styles.videoChef}>@{item.chef}</Text>
+                <Text style={styles.videoTitle}>{hardcodedData.title}</Text>
+                <Text style={styles.videoChef}>@{hardcodedData.chef}</Text>
                 <View style={styles.videoStats}>
                   <View style={styles.videoStatItem}>
                     <Text style={styles.heartIcon}>♥</Text>
-                    <Text style={styles.statText}>{item.likes}</Text>
+                    <Text style={styles.statText}>{hardcodedData.likes}</Text>
                   </View>
                   <View style={styles.videoStatItem}>
-                    <Text style={styles.statText}>{item.views} views</Text>
+                    <Text style={styles.statText}>{hardcodedData.views} views</Text>
                   </View>
                 </View>
               </View>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       );
     } else if (activeTab === 'chefs') {
       return (
         <View style={styles.chefCard}>
           <View style={styles.chefHeader}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/breakfast.png')}
+              source={require('../assets/breakfast.png')}
               style={styles.chefAvatar}
             />
             <View style={styles.chefInfo}>
@@ -286,12 +356,17 @@ export default function UserDashboard() {
           </View>
           <View style={styles.chefRating}>
             <Image
-              source={require('/Users/jadenbro1/FreshTemp/assets/favorite.png')}
+              source={require('../assets/favorite.png')}
               style={styles.starIcon}
             />
             <Text style={styles.ratingText}>{item.rating}</Text>
           </View>
-          <TouchableOpacity style={styles.followButton} onPress={() => {}}>
+          <TouchableOpacity
+            style={styles.followButton}
+            onPress={() => {}}
+            accessibilityLabel="Follow Chef"
+            accessibilityHint="Follow this chef to see their recipes"
+          >
             <Text style={styles.followButtonText}>Follow</Text>
           </TouchableOpacity>
         </View>
@@ -300,17 +375,17 @@ export default function UserDashboard() {
       return (
         <View style={styles.dishCard}>
           <Image
-            source={require('/Users/jadenbro1/FreshTemp/assets/breakfast.png')}
+            source={{ uri: item.image }}
             style={styles.dishImage}
           />
           <View style={styles.dishInfo}>
             <View style={styles.dishHeader}>
               <View>
-                <Text style={styles.dishTitle}>{item.title}</Text>
+                <Text style={styles.dishTitle}>{item.name}</Text>
                 <Text style={styles.dishChef}>by @{item.chef}</Text>
               </View>
               <View style={styles.dishBadge}>
-                <Text style={styles.dishBadgeText}>{item.category}</Text>
+                <Text style={styles.dishBadgeText}>Premium</Text>
               </View>
             </View>
             <Text style={styles.dishDescription}>{item.description}</Text>
@@ -324,12 +399,16 @@ export default function UserDashboard() {
             <View style={styles.dishStats}>
               <View style={styles.dishStatItem}>
                 <Image
-                  source={require('/Users/jadenbro1/FreshTemp/assets/clock.png')}
+                  source={require('../assets/clock.png')}
                   style={styles.statIcon}
                 />
-                <Text style={styles.statText}>{item.prepTime}</Text>
+                <Text style={styles.statText}>{item.prepTime} min</Text>
               </View>
               <View style={styles.dishStatItem}>
+                <Image
+                  source={require('../assets/servings.png')} // Added servings.png
+                  style={styles.statIcon}
+                />
                 <Text style={styles.statText}>{item.servings} servings</Text>
               </View>
               <Text style={styles.dishDifficulty}>{item.difficulty}</Text>
@@ -339,7 +418,12 @@ export default function UserDashboard() {
                 <Text style={styles.heartIcon}>♥</Text>
                 <Text style={styles.likesText}>{item.likes} likes</Text>
               </View>
-              <TouchableOpacity style={styles.viewRecipeButton} onPress={() => {}}>
+              <TouchableOpacity
+                style={styles.viewRecipeButton}
+                onPress={() => navigation.navigate('RecipeDetails', { recipeId: item.id })}
+                accessibilityLabel="View Recipe"
+                accessibilityHint="Navigate to the recipe details"
+              >
                 <Text style={styles.viewRecipeButtonText}>View Recipe</Text>
               </TouchableOpacity>
             </View>
@@ -358,21 +442,33 @@ export default function UserDashboard() {
       {/* Tabs */}
       <Tabs />
 
+{/* Loading Indicator */}
+{loading && (
+  <View style={styles.loadingContainer}>
+    <Image
+      source={require('../assets/loading3.gif')}
+      style={styles.loadingGif}
+    />
+  </View>
+)}
+
       {/* FlatList */}
-      <FlatList
-        data={
-          activeTab === 'trending'
-            ? trendingVideos
-            : activeTab === 'chefs'
-            ? featuredChefs
-            : popularDishes
-        }
-        keyExtractor={(item, index) => index.toString()}
-        key={activeTab} // To handle numColumns changing
-        numColumns={activeTab === 'trending' ? 2 : 1}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        renderItem={renderItem}
-      />
+      {!loading && (
+        <FlatList
+          data={
+            activeTab === 'trending'
+              ? videos
+              : activeTab === 'chefs'
+              ? featuredChefs
+              : premiumRecipes
+          }
+          keyExtractor={(item, index) => index.toString()}
+          key={activeTab} // To handle numColumns changing
+          numColumns={activeTab === 'trending' ? 2 : 1}
+          contentContainerStyle={{ paddingBottom: 80 }}
+          renderItem={renderItem}
+        />
+      )}
 
       {/* Navbar */}
       <Navbar currentScreen="Search" />
@@ -386,6 +482,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f9fafb',
     paddingTop: 42,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingGif: {
+    width: 200,
+    height: 200,
   },
   // Header Styles
   header: {
@@ -516,14 +621,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'space-between',
     padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   videoPlayButton: {
     alignSelf: 'flex-end',
   },
   playIcon: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     tintColor: 'white',
   },
   videoInfoOverlay: {
@@ -673,9 +778,9 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   dishBadge: {
-    backgroundColor: '#5FC6FF',
-    borderRadius: 6,
-    paddingHorizontal: 6,
+    backgroundColor: '#A9CCE3', // Changed to a different color to distinguish
+    borderRadius: 12,
+    paddingHorizontal: 8,
     paddingVertical: 10,
   },
   dishBadgeText: {

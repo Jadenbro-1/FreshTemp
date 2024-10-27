@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
   Dimensions,
   ScrollView,
@@ -16,6 +15,7 @@ import {
 import axios from 'axios';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Navbar from './Navbar'; // Ensure Navbar is correctly imported
+import Video from 'react-native-video'; // Import Video component
 
 const { width } = Dimensions.get('window');
 
@@ -102,11 +102,15 @@ const MyProfile = () => {
     return chunks;
   };
 
-  // Show loading indicator while fetching data
+  // Show loading screen with loading3.gif while fetching data
   if (loading || !user || !profile) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#38BDF8" />
+        <Image
+          source={require('../assets/loading3.gif')} // Updated to loading3.gif
+          style={styles.loadingGif}
+          resizeMode="contain"
+        />
       </View>
     );
   }
@@ -186,6 +190,8 @@ const MyProfile = () => {
         <TouchableOpacity
           onPress={() => setActiveTab('videos')}
           style={styles.tabItem}
+          accessibilityLabel="Videos Tab"
+          accessibilityHint="View your videos"
         >
           <Image
             source={require('../assets/videos2.png')} // Updated icon path
@@ -196,6 +202,8 @@ const MyProfile = () => {
         <TouchableOpacity
           onPress={() => setActiveTab('posts')}
           style={styles.tabItem}
+          accessibilityLabel="Posts Tab"
+          accessibilityHint="View your posts"
         >
           <Image
             source={require('../assets/book.png')} // Updated icon path
@@ -206,6 +214,8 @@ const MyProfile = () => {
         <TouchableOpacity
           onPress={() => setActiveTab('about')}
           style={styles.tabItem}
+          accessibilityLabel="About Tab"
+          accessibilityHint="View about information"
         >
           <Image
             source={require('../assets/login2.png')} // Updated icon path
@@ -249,12 +259,19 @@ const MyProfile = () => {
                         isSubscribed: video.isSubscribed || false,
                       })
                     }
+                    accessibilityLabel={`Video ${video.title}`}
+                    accessibilityHint="Play the selected video"
                   >
                     {video.url ? (
                       <>
-                        <Image
-                          source={{ uri: video.thumbnail_url || video.url }}
+                        <Video
+                          source={{ uri: video.url }}
                           style={styles.videoThumbnail}
+                          resizeMode="cover"
+                          repeat={false}
+                          paused={true}
+                          onError={(error) => console.error(`Error loading video ${video.media_id}:`, error)}
+                          onLoadStart={() => console.log(`Loading video ${video.media_id}: ${video.url}`)}
                         />
                         <View style={styles.overlay}>
                           <Image
@@ -313,6 +330,7 @@ const MyProfile = () => {
 };
 
 const styles = StyleSheet.create({
+  // Container
   container: {
     flex: 1,
     backgroundColor: '#F3F4F6', // bg-gray-50
@@ -325,6 +343,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 60, // To ensure content is above the Navbar
   },
+  // Header Styles
   header: {
     backgroundColor: '#FFFFFF', // bg-white
     paddingHorizontal: 16, // px-4
@@ -348,7 +367,7 @@ const styles = StyleSheet.create({
     fontWeight: '600', // font-semibold
     marginRight: 4, // mr-1
     color: '#38BDF8', // text-sky-500
-    fontFamily: 'Cochin'
+    fontFamily: 'Cochin',
   },
   headerIcon: {
     width: 16, // h-4
@@ -367,6 +386,7 @@ const styles = StyleSheet.create({
   headerIconButton: {
     marginLeft: 16,
   },
+  // Profile Info Styles
   profileInfoContainer: {
     backgroundColor: '#FFFFFF', // bg-white
     paddingHorizontal: 16, // px-4
@@ -404,7 +424,7 @@ const styles = StyleSheet.create({
     fontSize: 14, // text-sm
     color: '#38BDF8', // text-sky-500
     fontWeight: '500', // font-medium
-            fontFamily: 'Cochin'
+    fontFamily: 'Cochin',
   },
   dotSeparator: {
     marginHorizontal: 8, // mx-2
@@ -419,7 +439,6 @@ const styles = StyleSheet.create({
     color: '#374151', // text-gray-700
     marginBottom: 16, // mb-4
     textAlign: 'center',
-    
   },
   actionButtonsContainer: {
     flexDirection: 'row',
@@ -434,13 +453,12 @@ const styles = StyleSheet.create({
   },
   subscribeButton: {
     backgroundColor: '#38BDF8', // bg-sky-500
-    
   },
   subscribeButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16, // Reduced font size
-        fontFamily: 'Cochin'
+    fontFamily: 'Cochin',
   },
   followButton: {
     borderWidth: 1,
@@ -450,7 +468,7 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontWeight: '600',
     fontSize: 16, // Reduced font size
-        fontFamily: 'Cochin'
+    fontFamily: 'Cochin',
   },
   messageButton: {
     borderWidth: 1,
@@ -460,8 +478,9 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontWeight: '600',
     fontSize: 16, // Reduced font size
-        fontFamily: 'Cochin'
+    fontFamily: 'Cochin',
   },
+  // Tabs Styles
   tabsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -490,6 +509,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0369A1',
     borderRadius: 1,
   },
+  // Videos Styles
   videosContainer: {
     paddingHorizontal: 0, // To compensate for videoContainer margins
     marginTop: 4,
@@ -534,6 +554,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
+  // Posts Styles
   postsContainer: {
     paddingHorizontal: 16,
     paddingVertical: 24, // Adjusted to ensure content is directly under buttons
@@ -545,6 +566,7 @@ const styles = StyleSheet.create({
     textAlign: 'center', // Centered text
     marginTop: 20,
   },
+  // About Styles
   aboutContainer: {
     paddingHorizontal: 16,
     paddingVertical: 24, // Adjusted to ensure content is directly under buttons
@@ -582,10 +604,16 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontSize: 14,
   },
+  // Loading Styles
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF', // Optional: set background to white for better visibility
+  },
+  loadingGif: {
+    width: 200,
+    height: 200,
   },
 });
 
